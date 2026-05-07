@@ -148,14 +148,16 @@ class TestExtraRules:
     def test_custom_rule_fires(self) -> None:
         extra = [ShellRule("block_ls", "ls -la", Decision.BLOCK, "test")]
         guard = ShellGuard(extra_rules=extra)
-        result = guard.validate("ls -la /tmp")
+        # Use a sandbox path so no built-in rule fires before the custom rule
+        result = guard.validate("ls -la /sandbox/src")
         assert result.decision == Decision.BLOCK
         assert result.rule == "block_ls"
 
     def test_builtin_still_fires_without_extra_match(self) -> None:
         extra = [ShellRule("block_ls", "ls -la", Decision.BLOCK, "test")]
         guard = ShellGuard(extra_rules=extra)
-        result = guard.validate("rm -rf /tmp")
+        # /workspace is not in the blocked-path list, so rm_rf HITL fires
+        result = guard.validate("rm -rf /workspace")
         assert result.decision == Decision.HITL
 
     def test_from_skill_adds_shell_rules(self) -> None:
@@ -200,22 +202,33 @@ class TestExtraRules:
 class TestSandboxPathValidation:
     def test_absolute_path_outside_sandbox_blocked(self) -> None:
         result = _GUARD.validate("cat /etc/passwd")
-        assert result.decision != Decision.ALLOW
+        assert result.decision == Decision.BLOCK
+        assert result.rule == "path_outside_sandbox"
 
     def test_rm_rf_outside_sandbox_blocked(self) -> None:
-        result = _GUARD.validate("rm -rf /var/log/app.log")
-        assert result.decision != Decision.ALLOW
+        # rm -rf hits rm_rf HITL first, so check /var path directly
+        result = _GUARD.validate("cp /var/log/app.log /tmp/out.log")
+        assert result.decision == Decision.BLOCK
+        assert result.rule == "path_outside_sandbox"
 
-    def test_sandbox_path_not_blocked_by_sandbox_rule(self) -> None:
-        # /sandbox/ path should not trigger path_outside_sandbox rule
+    def test_sandbox_path_allowed(self) -> None:
         result = _GUARD.validate("cat /sandbox/src/main.py")
-        if result.decision != Decision.ALLOW:
-            assert result.rule != "path_outside_sandbox"
+        assert result.decision == Decision.ALLOW
 
-    def test_relative_path_not_blocked_by_sandbox_rule(self) -> None:
+    def test_relative_path_allowed(self) -> None:
         result = _GUARD.validate("cat src/main.py")
-        if result.decision != Decision.ALLOW:
-            assert result.rule != "path_outside_sandbox"
+        assert result.decision == Decision.ALLOW
+
+    def test_relative_path_with_etc_subdir_allowed(self) -> None:
+        # ./etc/ is a relative path — must not be caught
+        result = _GUARD.validate("ls ./etc/config")
+        assert result.decision == Decision.ALLOW
+
+    def test_absolute_path_at_end_of_string_blocked(self) -> None:
+        # /root with nothing after — must be caught
+        result = _GUARD.validate("ls /root")
+        assert result.decision == Decision.BLOCK
+        assert result.rule == "path_outside_sandbox"
 
 
 class TestGuardResultHelpers:
@@ -233,7 +246,8 @@ class TestGuardResultHelpers:
         assert result.needs_hitl is False
 
     def test_hitl_result_helpers(self) -> None:
-        result = _GUARD.validate("rm -rf /tmp")
+        # /workspace is not in the blocked-path list, so rm_rf HITL fires
+        result = _GUARD.validate("rm -rf /workspace")
         assert result.needs_hitl is True
         assert result.is_allowed is False
         assert result.is_blocked is False

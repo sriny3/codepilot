@@ -54,7 +54,7 @@ _BUILTIN_RULES: tuple[ShellRule, ...] = (
     ),
     ShellRule(
         "path_outside_sandbox",
-        r"(?<!/sandbox)/(?:etc|var|tmp|usr|home|root|sys|proc|dev|opt|run)[/\s\"']",
+        r'(?<!\S)(?<!/sandbox)/(?:etc|var|tmp|usr|home|root|sys|proc|dev|opt|run)(?:[/\s"\']|$)',
         Decision.BLOCK,
         "absolute path outside /sandbox/ — use relative or /sandbox/ paths",
         use_regex=True,
