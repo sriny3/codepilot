@@ -1,0 +1,92 @@
+name: feature_addition
+version: 1
+description: >
+  Add a new feature by following the codebase's established patterns. Read
+  similar existing features first; design the interface; implement; test;
+  document.
+task_types:
+  - feature_addition
+applies_to:
+  - coder
+owner: platform-agents
+
+instructions: |
+  New features must look like they were written by the same hand as the
+  existing code. Before writing anything, find and read the closest sibling
+  feature in the repo (same layer, similar shape). Match its naming,
+  testing style, error handling, and module placement.
+
+  Strong preferences:
+    - Pattern-match BEFORE designing. A consistent codebase is cheaper than
+      a clever one.
+    - Public interfaces are sticky. Sketch the signatures and call sites
+      before implementing.
+    - Backward compatibility: do not break existing call sites unless the
+      issue explicitly asks for it.
+    - Add tests for happy path AND at least one failure mode.
+    - Update README / docs only if the feature surfaces a public API.
+
+workflow_steps:
+  - id: explore_pattern
+    title: Find the closest existing pattern
+    instructions: |
+      Use the relevant_files list to identify a sibling feature in the same
+      module / layer. Read it in full. Note: how it's named, where its tests
+      live, how it handles errors, how it's wired into callers.
+    success_criteria: One sibling feature identified and read end-to-end.
+
+  - id: design
+    title: Sketch the interface
+    instructions: |
+      Write the public signatures (functions / classes / endpoints) BEFORE
+      writing the body. Document each parameter and return shape inline as
+      a one-liner.
+    success_criteria: Signatures + return shapes proposed before any logic lands.
+
+  - id: implement
+    title: Implement against the sketch
+    instructions: |
+      Fill in the bodies one signature at a time. After each, run the
+      module's existing tests in the sandbox to ensure nothing regressed.
+    success_criteria: All existing tests pass after each commit-sized edit.
+
+  - id: test
+    title: Add tests for the new feature
+    instructions: |
+      Cover the happy path plus one error/edge case (empty input, null,
+      out-of-range). Place tests in the same location as the sibling
+      feature's tests.
+    success_criteria: ≥ 2 new tests; both pass.
+
+  - id: document
+    title: Update documentation if public-facing
+    instructions: |
+      If the new feature changes a public API or adds an endpoint, update
+      the README and any module-level docstring. Otherwise leave docs alone.
+    success_criteria: Docs updated only if public surface changed.
+
+example_prompts:
+  - prompt: "Add /metrics endpoint that returns request count per route"
+    expected_workflow: [explore_pattern, design, implement, test, document]
+  - prompt: "Add support for `--dry-run` flag to the deploy CLI"
+    expected_workflow: [explore_pattern, design, implement, test, document]
+
+forbidden_actions:
+  - kind: shell
+    pattern: "pip install"
+    reason: No network installs.
+  - kind: file
+    pattern: "*.env"
+    reason: Secret material.
+  - kind: file
+    pattern: "*credentials*"
+    reason: Secret material.
+
+checklist:
+  - "Did you read at least one sibling feature before designing?"
+  - "Are the public signatures documented inline?"
+  - "Are there tests for happy path AND an error case?"
+  - "Did you update README only if public API changed?"
+
+references:
+  - "Codebase conventions live next to the code, not in this skill."

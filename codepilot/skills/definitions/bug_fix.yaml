@@ -1,0 +1,88 @@
+name: bug_fix
+version: 1
+description: >
+  Reproduce the bug with a failing test, localize the cause, fix it, and
+  verify the test now passes — without breaking neighbours.
+task_types:
+  - bug_fix
+applies_to:
+  - coder
+owner: platform-agents
+
+instructions: |
+  Bugs are not solved by patches that only suppress the symptom. Your job is
+  to (1) make the failure mechanical and reproducible, (2) understand WHY the
+  failure happens, (3) fix the root cause, (4) prove the fix with the test
+  that originally failed plus the rest of the suite.
+
+  Strong preferences:
+    - Reproduce FIRST. A red test before any code change.
+    - Localize via the stack trace + relevant_files list. Do not grep the
+      whole repo when the trace tells you the file.
+    - Make the smallest credible change that turns the failing test green.
+    - Run the full suite, not just the new test. A fix that breaks 3 other
+      tests is not a fix.
+    - If you can't reproduce within 2 attempts, REQUEST HUMAN APPROVAL with
+      what you tried.
+
+workflow_steps:
+  - id: reproduce
+    title: Reproduce the bug
+    instructions: |
+      Read the issue body and any attached stack trace. Write a minimal
+      failing test that captures the symptom. Run only that test; confirm
+      it fails with the same error class as the report.
+    success_criteria: A new test fails with the reported error class.
+
+  - id: localize
+    title: Localize the root cause
+    instructions: |
+      Walk the failing stack from the test outward. Open each frame's source
+      via read_file. Identify the first frame that contains buggy logic
+      (not just a propagating exception). Note the offending lines.
+    success_criteria: One file:line pinpointed with a one-sentence diagnosis.
+
+  - id: fix
+    title: Apply the smallest credible fix
+    instructions: |
+      Edit only the file(s) localized in the previous step. Do not refactor
+      unrelated code. Prefer guarding against the known bad input over
+      rewriting whole branches. Update or add inline comments only where
+      they document a non-obvious invariant.
+    success_criteria: Edit applied; diff covers ≤ 3 files unless task explicitly demands otherwise.
+
+  - id: verify
+    title: Verify the fix
+    instructions: |
+      Run the new test. Run the full test suite in the sandbox. If anything
+      else broke, revisit the fix; do not paper over the regression.
+    success_criteria: All tests pass; new failing test is now green.
+
+example_prompts:
+  - prompt: "Fix null pointer in `get_user_by_id` when DB returns no rows"
+    expected_workflow: [reproduce, localize, fix, verify]
+  - prompt: "Token expiry check accepts already-expired tokens (off-by-one)"
+    expected_workflow: [reproduce, localize, fix, verify]
+
+forbidden_actions:
+  - kind: shell
+    pattern: "pip install"
+    reason: No network installs from inside the sandbox.
+  - kind: shell
+    pattern: "rm -rf"
+    reason: Destructive without warning.
+  - kind: file
+    pattern: "*.env"
+    reason: Secret material; never edit.
+  - kind: file
+    pattern: "*credentials*"
+    reason: Secret material; never edit.
+
+checklist:
+  - "Did you write a failing test BEFORE editing code?"
+  - "Did you read the localized file via read_file before editing?"
+  - "Does the diff cover ≤ 3 files?"
+  - "Do all existing tests still pass?"
+
+references:
+  - "Reproducible bug reports - https://www.joelonsoftware.com/2000/11/08/the-joel-test/"

@@ -1,0 +1,96 @@
+name: dependency_update
+version: 1
+description: >
+  Bump one or more dependencies, resolve breaking changes by reading the
+  changelog, regenerate lockfiles, and run the full test suite.
+task_types:
+  - dependency_update
+applies_to:
+  - coder
+owner: platform-agents
+
+instructions: |
+  Dependency bumps fail in characteristic ways: deprecated APIs, removed
+  fields, transitive conflicts. Your job is to find them BEFORE running the
+  test suite — fewer surprises during verification.
+
+  Strong preferences:
+    - Read the CHANGELOG / release notes between current and target versions.
+    - Bump one dependency at a time when possible.
+    - Regenerate lockfiles from the bumped manifest, never hand-edit them.
+    - Run the FULL suite — bump effects often hit unrelated modules.
+    - If a breaking change has no obvious migration, REQUEST HUMAN APPROVAL.
+
+workflow_steps:
+  - id: check_changelog
+    title: Read the changelog between current and target
+    instructions: |
+      Identify the current pinned version from the manifest. Look up the
+      target's CHANGELOG / release notes. Note every "BREAKING" or
+      "DEPRECATED" entry that mentions a symbol your repo uses.
+    success_criteria: Breaking-change list noted, or explicitly "none flagged".
+
+  - id: update_manifest
+    title: Update the version pin
+    instructions: |
+      Edit pyproject.toml / package.json / Cargo.toml etc to the new version
+      range. Keep the existing range operator (^, ~, ==) unless the issue
+      asks for a tighter pin.
+    success_criteria: Manifest changed; lockfile not yet touched.
+
+  - id: regenerate_lockfile
+    title: Regenerate the lockfile
+    instructions: |
+      Run the appropriate resolver (pip-compile, npm install --package-lock-only,
+      cargo update -p <pkg>) inside the sandbox to refresh the lockfile.
+      Do not edit the lockfile by hand.
+    success_criteria: Lockfile regenerated cleanly; no resolver errors.
+
+  - id: resolve_conflicts
+    title: Resolve breaking changes
+    instructions: |
+      For each item from `check_changelog`, search the repo for affected
+      symbols (read_file, not full grep — use the relevant_files list).
+      Apply the migration noted in the changelog. Add a comment on each
+      non-obvious migration explaining the WHY.
+    success_criteria: Every breaking-change item resolved or explicitly waived.
+
+  - id: test_all
+    title: Run the full test suite
+    instructions: |
+      Run the entire test suite in the sandbox. If any test fails, decide:
+      legitimate regression (fix the migration) or pre-existing flake (note
+      and continue). Do not silence flakes.
+    success_criteria: Suite passes (or only pre-existing flakes remain, documented).
+
+example_prompts:
+  - prompt: "Bump pydantic from 1.10 to 2.x"
+    expected_workflow: [check_changelog, update_manifest, regenerate_lockfile, resolve_conflicts, test_all]
+  - prompt: "Update fastapi to ^0.115"
+    expected_workflow: [check_changelog, update_manifest, regenerate_lockfile, resolve_conflicts, test_all]
+
+forbidden_actions:
+  - kind: shell
+    pattern: "pip install"
+    reason: Use the manifest + lockfile flow, not direct installs.
+  - kind: shell
+    pattern: "npm install -g"
+    reason: Global installs change the host environment.
+  - kind: shell
+    pattern: "curl"
+    reason: No network downloads from the sandbox.
+  - kind: file
+    pattern: "*.env"
+    reason: Secret material.
+  - kind: file
+    pattern: "*credentials*"
+    reason: Secret material.
+
+checklist:
+  - "Did you read the changelog between current and target?"
+  - "Did you regenerate the lockfile (not hand-edit it)?"
+  - "Did the FULL test suite pass?"
+  - "Is each non-obvious migration commented with WHY?"
+
+references:
+  - "Common breaking-change patterns - https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"

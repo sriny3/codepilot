@@ -1,0 +1,81 @@
+name: documentation
+version: 1
+description: >
+  Read existing docs, draft new content matching their voice and style,
+  verify accuracy against the actual code, and update the index/TOC if
+  applicable.
+task_types:
+  - documentation
+applies_to:
+  - coder
+owner: platform-agents
+
+instructions: |
+  Documentation has a voice. Match it. Read the surrounding pages, then
+  draft new content in the same register, length, and code-example style.
+  Inaccurate docs are worse than missing docs — verify every claim against
+  the source code.
+
+  Strong preferences:
+    - Read sibling docs BEFORE drafting.
+    - Every code snippet must be runnable. Copy from real examples or tests
+      where possible; do not invent imports.
+    - If a public API is changing in this PR, the README must reflect it.
+    - Update the docs index / TOC if a new top-level page is added.
+
+workflow_steps:
+  - id: read_existing
+    title: Read sibling documentation
+    instructions: |
+      Locate the closest existing doc in the same area (using the
+      relevant_files list). Read it fully. Note: tone (terse / chatty),
+      code-block conventions (language tag, prompt prefix), heading depth.
+    success_criteria: One sibling doc identified and read end-to-end.
+
+  - id: draft
+    title: Draft the new content
+    instructions: |
+      Write the doc in the same voice as the sibling. Include working code
+      examples. Cap each paragraph at ~3 sentences; use lists liberally.
+    success_criteria: Draft saved to the right path; no placeholder text remains.
+
+  - id: review_accuracy
+    title: Verify every code claim against the source
+    instructions: |
+      For each function / class / flag mentioned, open the source via
+      read_file and confirm it exists with the documented signature. Update
+      the draft if any claim is wrong.
+    success_criteria: Every code reference verified or removed.
+
+  - id: update_index
+    title: Update the index / TOC if needed
+    instructions: |
+      If a new page was added at the top level (not nested under an existing
+      section), add it to the docs index. Otherwise leave the index alone.
+    success_criteria: Index updated only when a top-level page was added.
+
+example_prompts:
+  - prompt: "Write a quickstart guide for the new /metrics endpoint"
+    expected_workflow: [read_existing, draft, review_accuracy, update_index]
+  - prompt: "Document the --dry-run flag in the deploy CLI README"
+    expected_workflow: [read_existing, draft, review_accuracy, update_index]
+
+forbidden_actions:
+  - kind: file
+    pattern: "*.env"
+    reason: Secret material; never include in docs.
+  - kind: file
+    pattern: "*credentials*"
+    reason: Secret material.
+  - kind: regex
+    pattern: "ghp_[A-Za-z0-9]{20,}"
+    reason: GitHub PAT pattern — never paste into docs.
+
+checklist:
+  - "Did you read a sibling doc first?"
+  - "Did every code snippet come from real source / tests?"
+  - "Did you update the index ONLY if a new top-level page was added?"
+  - "Are there zero secrets / tokens in the new content?"
+
+references:
+  - "Diátaxis framework - https://diataxis.fr"
