@@ -11,7 +11,9 @@ _DIFF_FILE_RE = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
 
 def make_branch_name(issue_id: int, title: str, *, prefix: str = "codepilot") -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40]
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower())[:40].strip("-")
+    if not slug:
+        slug = "issue"
     return f"{prefix}/issue-{issue_id}-{slug}"
 
 

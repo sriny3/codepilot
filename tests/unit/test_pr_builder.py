@@ -39,6 +39,24 @@ class TestMakeBranchName:
         name = make_branch_name(1, "Add dark mode support")
         assert "add-dark-mode-support" in name
 
+    def test_empty_title_produces_valid_name(self) -> None:
+        name = make_branch_name(1, "")
+        assert not name.endswith("-")
+        assert "issue-1" in name
+
+    def test_special_chars_only_title_produces_valid_name(self) -> None:
+        name = make_branch_name(1, "!!!")
+        assert not name.endswith("-")
+        assert "issue-1" in name
+
+    def test_slug_truncation_no_trailing_hyphen(self) -> None:
+        # title where the 40th char of slug falls on a hyphen
+        title = "a" * 39 + " extra"
+        name = make_branch_name(1, title)
+        slug = name.split("issue-1-")[1]
+        assert not slug.endswith("-")
+        assert len(slug) <= 40
+
 
 # ── make_commit_message ───────────────────────────────────────────────────────
 
@@ -54,6 +72,10 @@ class TestMakeCommitMessage:
 
     def test_returns_string(self) -> None:
         assert isinstance(make_commit_message(1, "t"), str)
+
+    def test_conventional_commit_format(self) -> None:
+        msg = make_commit_message(99, "add login")
+        assert msg.startswith("fix(#99):")
 
 
 # ── build_pr_title ────────────────────────────────────────────────────────────
