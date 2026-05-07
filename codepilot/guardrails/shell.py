@@ -52,6 +52,13 @@ _BUILTIN_RULES: tuple[ShellRule, ...] = (
         "shell command injection via eval",
         use_regex=True,
     ),
+    ShellRule(
+        "path_outside_sandbox",
+        r"(?<!/sandbox)/(?:etc|var|tmp|usr|home|root|sys|proc|dev|opt|run)[/\s\"']",
+        Decision.BLOCK,
+        "absolute path outside /sandbox/ — use relative or /sandbox/ paths",
+        use_regex=True,
+    ),
     # ── HITL: needs human approval before running ────────────────────────────
     ShellRule(
         "git_push_force",

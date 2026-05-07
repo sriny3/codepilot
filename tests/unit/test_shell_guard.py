@@ -197,6 +197,27 @@ class TestExtraRules:
         assert "deploy.sh" in result.rule
 
 
+class TestSandboxPathValidation:
+    def test_absolute_path_outside_sandbox_blocked(self) -> None:
+        result = _GUARD.validate("cat /etc/passwd")
+        assert result.decision != Decision.ALLOW
+
+    def test_rm_rf_outside_sandbox_blocked(self) -> None:
+        result = _GUARD.validate("rm -rf /var/log/app.log")
+        assert result.decision != Decision.ALLOW
+
+    def test_sandbox_path_not_blocked_by_sandbox_rule(self) -> None:
+        # /sandbox/ path should not trigger path_outside_sandbox rule
+        result = _GUARD.validate("cat /sandbox/src/main.py")
+        if result.decision != Decision.ALLOW:
+            assert result.rule != "path_outside_sandbox"
+
+    def test_relative_path_not_blocked_by_sandbox_rule(self) -> None:
+        result = _GUARD.validate("cat src/main.py")
+        if result.decision != Decision.ALLOW:
+            assert result.rule != "path_outside_sandbox"
+
+
 class TestGuardResultHelpers:
     def test_allowed_result_is_allowed(self) -> None:
         from codepilot.guardrails.base import ALLOWED
