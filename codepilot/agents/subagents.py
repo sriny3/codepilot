@@ -5,7 +5,6 @@ from typing import Any
 
 from deepagents import FilesystemPermission  # type: ignore[import]
 
-from codepilot.agents.tools.memory_tools import query_lessons
 from codepilot.agents.tools.repo_tools import (
     build_repo_map,
     cache_repo_map,
