@@ -19,10 +19,18 @@ class TestMemoryToolsAreLangChainTools:
 class TestQueryLessons:
     def test_returns_list(self) -> None:
         from codepilot.agents.tools.memory_tools import query_lessons
+        from codepilot.memory.episodic import TaskOutcome
 
         mock_store = MagicMock()
-        mock_store.query.return_value = [
-            {"approach": "used TDD", "outcome": "passed", "files": ["a.py"], "issue_type": "bug_fix"}
+        mock_store.task_records.return_value = [
+            TaskOutcome(
+                issue_id=1,
+                repo="acme/widgets",
+                task_type="bug_fix",
+                files_modified=["a.py"],
+                outcome="passed",
+                note="used TDD",
+            )
         ]
 
         with patch("codepilot.agents.tools.memory_tools._get_store", return_value=mock_store):
@@ -47,4 +55,4 @@ class TestQueryLessons:
                 }
             )
 
-        mock_store.add.assert_called_once()
+        mock_store.record_task.assert_called_once()
