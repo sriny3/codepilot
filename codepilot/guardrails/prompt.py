@@ -5,6 +5,7 @@ installed a NeMo-backed subclass can be substituted without changing call sites.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
 
 from codepilot.guardrails.base import ALLOWED, Decision, GuardResult
@@ -87,3 +88,45 @@ class PromptGuard:
                     reason="potential prompt injection detected",
                 )
         return ALLOWED
+
+
+class NemoPromptGuard(PromptGuard):
+    """Uses NeMo Guardrails when available; falls back to regex patterns."""
+
+    def validate_text(self, text: str) -> GuardResult:
+        if importlib.util.find_spec("nemoguardrails"):
+            try:
+                return self._nemo_validate(text)
+            except Exception:
+                pass
+        return super().validate_text(text)
+
+    def _nemo_validate(self, text: str) -> GuardResult:
+        from nemoguardrails import RailsConfig  # type: ignore[import]
+        from nemoguardrails.integrations.langchain.runnable_rails import RunnableRails  # type: ignore[import]
+        config = RailsConfig.from_content(
+            yaml_content="""
+models: []
+rails:
+  input:
+    flows:
+      - check jailbreak
+      - check input sensitive data
+"""
+        )
+        rails = RunnableRails(config=config)
+        output = rails.invoke({"input": text})
+        if "blocked" in str(output).lower() or "not allowed" in str(output).lower():
+            return GuardResult(
+                decision=Decision.BLOCK,
+                rule="nemo_rails",
+                reason="NeMo Guardrails blocked input",
+            )
+        return ALLOWED
+
+
+def make_prompt_guard() -> PromptGuard:
+    """Return NemoPromptGuard if nemoguardrails is installed, else PromptGuard."""
+    if importlib.util.find_spec("nemoguardrails"):
+        return NemoPromptGuard()
+    return PromptGuard()
