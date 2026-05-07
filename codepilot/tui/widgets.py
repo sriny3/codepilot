@@ -4,6 +4,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import DataTable, Input, ListView, Static
+from textual.widgets._data_table import CellDoesNotExist
 
 
 class IssuesPanel(Vertical):
@@ -33,7 +34,7 @@ class IssuesPanel(Vertical):
             table.update_cell(key, "num", f"#{issue_id}")
             table.update_cell(key, "title", title[:38])
             table.update_cell(key, "state", state)
-        except Exception:
+        except CellDoesNotExist:
             table.add_row(f"#{issue_id}", title[:38], state, key=key)
 
 
