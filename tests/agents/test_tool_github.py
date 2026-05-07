@@ -91,3 +91,40 @@ class TestCommitFilesMergeConflict:
                         "message": "fix(#1): patch",
                     }
                 )
+
+
+class TestListOpenIssues:
+    def test_empty_labels_returns_all_issues(self, min_env: None) -> None:
+        from codepilot.agents.tools.github_tools import list_open_issues
+
+        mock_wrapper = MagicMock()
+        mock_wrapper.get_issues.return_value = [
+            {"number": 1, "title": "Issue A", "body": "fix bug", "labels": []},
+            {"number": 2, "title": "Issue B", "body": "add feature", "labels": []},
+        ]
+
+        with patch(
+            "codepilot.agents.tools.github_tools._get_wrapper",
+            return_value=mock_wrapper,
+        ):
+            result = list_open_issues.invoke({"labels": [], "exclude_ids": []})
+
+        assert len(result) == 2
+
+    def test_exclude_ids_filters_issues(self, min_env: None) -> None:
+        from codepilot.agents.tools.github_tools import list_open_issues
+
+        mock_wrapper = MagicMock()
+        mock_wrapper.get_issues.return_value = [
+            {"number": 1, "title": "Issue A", "body": "", "labels": []},
+            {"number": 2, "title": "Issue B", "body": "", "labels": []},
+        ]
+
+        with patch(
+            "codepilot.agents.tools.github_tools._get_wrapper",
+            return_value=mock_wrapper,
+        ):
+            result = list_open_issues.invoke({"labels": [], "exclude_ids": [1]})
+
+        assert len(result) == 1
+        assert result[0]["number"] == 2
