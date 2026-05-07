@@ -17,18 +17,27 @@ from codepilot.memory.state import TestRunSummary
 
 class TestMakeBranchName:
     def test_default_prefix(self) -> None:
-        assert make_branch_name(42) == "codepilot/issue-42"
+        assert make_branch_name(42, "Fix null pointer") == "codepilot/issue-42-fix-null-pointer"
 
     def test_custom_prefix(self) -> None:
-        assert make_branch_name(7, prefix="bot") == "bot/issue-7"
+        assert make_branch_name(7, "add feature", prefix="bot") == "bot/issue-7-add-feature"
+
+    def test_slug_strips_special_chars(self) -> None:
+        name = make_branch_name(1, "Fix: the auth (bug)!")
+        assert name == "codepilot/issue-1-fix-the-auth-bug"
+
+    def test_slug_truncated_to_40_chars(self) -> None:
+        long_title = "a" * 60
+        name = make_branch_name(1, long_title)
+        slug = name.split("issue-1-")[1]
+        assert len(slug) <= 40
 
     def test_issue_id_in_name(self) -> None:
-        name = make_branch_name(123)
-        assert "123" in name
+        assert "123" in make_branch_name(123, "some title")
 
-    def test_prefix_in_name(self) -> None:
-        name = make_branch_name(1, prefix="mybot")
-        assert name.startswith("mybot/")
+    def test_slug_is_kebab_case(self) -> None:
+        name = make_branch_name(1, "Add dark mode support")
+        assert "add-dark-mode-support" in name
 
 
 # ── make_commit_message ───────────────────────────────────────────────────────
@@ -147,6 +156,29 @@ class TestBuildPrBody:
             issue_id=1, issue_title="x", proposed_diff=short_diff, test_summary="ok"
         )
         assert "truncated" not in body
+
+
+class TestBuildPrBodyApproach:
+    def test_approach_section_present_when_provided(self) -> None:
+        body = build_pr_body(
+            issue_id=1, issue_title="fix", proposed_diff=None,
+            test_summary="ok", approach="Used TF-IDF + Qdrant rerank."
+        )
+        assert "## Approach" in body
+        assert "TF-IDF" in body
+
+    def test_approach_section_absent_when_empty(self) -> None:
+        body = build_pr_body(
+            issue_id=1, issue_title="fix", proposed_diff=None,
+            test_summary="ok", approach=""
+        )
+        assert "## Approach" not in body
+
+    def test_approach_default_is_empty(self) -> None:
+        body = build_pr_body(
+            issue_id=1, issue_title="fix", proposed_diff=None, test_summary="ok"
+        )
+        assert "## Approach" not in body
 
 
 # ── extract_changed_files ─────────────────────────────────────────────────────
