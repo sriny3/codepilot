@@ -42,3 +42,20 @@ class TestRunTests:
         result = parse_test_output.invoke({"raw_output": raw, "framework": "pytest"})
         assert isinstance(result, dict)
         assert "passed" in result
+
+    def test_run_tests_returns_error_dict_on_exception(self) -> None:
+        from codepilot.agents.tools.test_tools import run_tests
+        with patch("codepilot.agents.tools.test_tools._run_suite", side_effect=RuntimeError("sandbox crashed")):
+            result = run_tests.invoke(
+                {"sandbox_path": "/sandbox", "command": "pytest", "timeout": 30.0}
+            )
+        assert result["failed"] == -1
+        assert "sandbox crashed" in result["failures"][0]["reason"]
+
+    def test_parse_test_output_with_failures(self) -> None:
+        from codepilot.agents.tools.test_tools import parse_test_output
+        raw = "FAILED tests/test_foo.py::test_bar - AssertionError\n1 failed in 0.2s"
+        result = parse_test_output.invoke({"raw_output": raw, "framework": "pytest"})
+        assert isinstance(result, dict)
+        assert "passed" in result
+        assert "failed" in result

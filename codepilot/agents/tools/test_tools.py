@@ -1,9 +1,12 @@
 """Test runner @tool wrappers."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from langchain_core.tools import tool
+
+_FAILED_RE = re.compile(r"\b\d+\s+failed\b", re.IGNORECASE)
 
 
 def _run_suite(sandbox_path: str, command: str, timeout: float):
@@ -24,12 +27,11 @@ def _run_suite(sandbox_path: str, command: str, timeout: float):
 @tool
 def run_tests(sandbox_path: str, command: str, timeout: float) -> dict:
     """Run the test suite in a sandbox directory. Returns passed/failed/failures."""
-    result = _run_suite(sandbox_path, command, timeout)
-    return {
-        "passed": result.passed,
-        "failed": result.failed,
-        "failures": result.failures,
-    }
+    try:
+        result = _run_suite(sandbox_path, command, timeout)
+        return {"passed": result.passed, "failed": result.failed, "failures": result.failures}
+    except Exception as exc:
+        return {"passed": 0, "failed": -1, "failures": [{"test": "runner", "reason": str(exc)}]}
 
 
 @tool
@@ -37,9 +39,8 @@ def parse_test_output(raw_output: str, framework: str) -> dict:
     """Parse raw test output into structured results. Supports pytest and unittest."""
     from codepilot.agents.test_agent.parser import parse_pytest_output
 
-    # Infer exit_code: if "failed" or "error" keywords appear, treat as non-zero
-    raw_lower = raw_output.lower()
-    exit_code = 1 if ("failed" in raw_lower or "error" in raw_lower) else 0
+    # Infer exit_code: detect "N failed" pattern to avoid false positives
+    exit_code = 1 if _FAILED_RE.search(raw_output) else 0
 
     result = parse_pytest_output(raw_output, "", exit_code)
     return {
