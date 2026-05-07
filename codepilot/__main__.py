@@ -29,8 +29,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"config error: {exc}", file=sys.stderr)
             return 1
         dump = s.model_dump()
-        for k in ("github_token", "openai_api_key", "anthropic_api_key",
-                  "qdrant_api_key", "langsmith_api_key"):
+        for k in ("github_token", "github_app_private_key", "openai_api_key",
+                  "anthropic_api_key", "qdrant_api_key", "langsmith_api_key"):
             if dump.get(k) is not None:
                 dump[k] = "***SET***"
         for k, v in dump.items():

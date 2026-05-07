@@ -14,7 +14,9 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    github_token: SecretStr
+    github_app_id: str
+    github_app_private_key: str
+    github_token: SecretStr | None = None           # optional, backwards compat
     repo_full_name: str = Field(pattern=r"^[\w.-]+/[\w.-]+$")
 
     openai_api_key: SecretStr | None = None

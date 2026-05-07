@@ -9,27 +9,49 @@ from codepilot.config.settings import Settings, get_settings
 class TestRequiredFields:
     def test_loads_from_env(self, min_env: None) -> None:
         s = Settings()  # type: ignore[call-arg]
-        assert s.github_token.get_secret_value() == "ghp_test"
+        assert s.github_app_id == "12345"
+        assert s.github_app_private_key == "fake-key"
         assert s.repo_full_name == "acme/widgets"
         assert s.openai_api_key is not None
 
-    def test_missing_github_token_raises(self, clean_env: None,
-                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_github_app_id_raises(self, clean_env: None,
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
         monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         with pytest.raises(ValidationError):
             Settings()  # type: ignore[call-arg]
 
+    def test_missing_github_app_private_key_raises(self, clean_env: None,
+                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        with pytest.raises(ValidationError):
+            Settings()  # type: ignore[call-arg]
+
+    def test_github_token_optional(self, clean_env: None,
+                                   monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
+        monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        s = Settings()  # type: ignore[call-arg]
+        assert s.github_token is None
+        assert s.github_app_id == "12345"
+
     def test_missing_repo_full_name_raises(self, clean_env: None,
                                            monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         with pytest.raises(ValidationError):
             Settings()  # type: ignore[call-arg]
 
     def test_invalid_repo_name_format(self, clean_env: None,
                                       monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
         monkeypatch.setenv("REPO_FULL_NAME", "not-a-valid-repo")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         with pytest.raises(ValidationError):
@@ -39,14 +61,16 @@ class TestRequiredFields:
 class TestLLMKeyRequirement:
     def test_neither_llm_key_raises(self, clean_env: None,
                                     monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
         monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
         with pytest.raises(ValidationError):
             Settings()  # type: ignore[call-arg]
 
     def test_only_anthropic_key_ok(self, clean_env: None,
                                    monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        monkeypatch.setenv("GITHUB_APP_ID", "12345")
+        monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
         monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         s = Settings()  # type: ignore[call-arg]
