@@ -1,6 +1,8 @@
 """Issue classifier — keyword rules first, LLM fallback."""
 from __future__ import annotations
 
+from langchain_core.tools import tool
+
 _KEYWORD_RULES: list[tuple[list[str], str]] = [
     (["fix", "bug", "error", "crash", "fail", "exception", "broken", "regression"], "bug_fix"),
     (["add", "feature", "implement", "support", "new", "create", "build"], "feature_addition"),
@@ -10,6 +12,7 @@ _KEYWORD_RULES: list[tuple[list[str], str]] = [
 ]
 
 
+@tool
 def classify_issue(title: str, body: str, labels: list[str]) -> str:
     """Return the issue type string. Keyword rules first; returns best match."""
     text = f"{title} {body} {' '.join(labels)}".lower()

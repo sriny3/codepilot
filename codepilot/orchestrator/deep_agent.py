@@ -1,8 +1,9 @@
 """DeepAgents orchestrator — replaces orchestrator.py."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import structlog
 from deepagents import FilesystemPermission, create_deep_agent  # type: ignore[import]
 from langchain_community.agent_toolkits.github.toolkit import GitHubToolkit  # type: ignore[import]
 from langchain_community.utilities.github import GitHubAPIWrapper  # type: ignore[import]
@@ -29,6 +30,8 @@ from codepilot.orchestrator.classifier import classify_issue
 if TYPE_CHECKING:
     from codepilot.orchestrator.factory import PipelineConfig
 
+_log = structlog.get_logger(__name__)
+
 ORCHESTRATOR_PROMPT = """\
 You are an autonomous coding agent. For each GitHub issue:
 1. Call classify_issue to determine task type (bug_fix, feature_addition, dependency_update, documentation, config_change).
@@ -47,21 +50,22 @@ State progression: TRIAGED → EXPLORING → IMPLEMENTING → TESTING → PR_OPE
 
 def _get_toolkit_tools() -> list:
     """Build GitHubToolkit tools from settings. Returns empty list on failure (e.g. invalid key in tests)."""
-    try:
-        from codepilot.config.settings import get_settings
+    from codepilot.config.settings import get_settings
 
-        settings = get_settings()
+    settings = get_settings()
+    try:
         github_wrapper = GitHubAPIWrapper(
             github_app_id=settings.github_app_id,
             github_app_private_key=settings.github_app_private_key.get_secret_value(),
             github_repository=settings.repo_full_name,
         )
         return GitHubToolkit.from_github_api_wrapper(github_wrapper).get_tools()
-    except Exception:
+    except Exception as exc:
+        _log.warning("github_toolkit_unavailable", error=str(exc))
         return []
 
 
-def build_orchestrator(cfg: "PipelineConfig"):  # type: ignore[return]
+def build_orchestrator(cfg: "PipelineConfig") -> Any:  # type: ignore[return]
     """Build and return the DeepAgents CompiledStateGraph orchestrator."""
     toolkit_tools = _get_toolkit_tools()
 
@@ -95,5 +99,5 @@ def build_orchestrator(cfg: "PipelineConfig"):  # type: ignore[return]
         },
         store=InMemoryStore(),
         checkpointer=MemorySaver(),
-        memory=["/memory/AGENTS.md"],
+        memory=[],
     )

@@ -22,7 +22,7 @@ _FIXTURES: list[tuple[str, str, list[str], str]] = [
 def test_classify_keyword_rules(title: str, body: str, labels: list[str], expected: str) -> None:
     from codepilot.orchestrator.classifier import classify_issue
 
-    result = classify_issue(title, body, labels)
+    result = classify_issue.invoke({"title": title, "body": body, "labels": labels})
     assert result == expected, f"'{title}' → got {result!r}, expected {expected!r}"
 
 
@@ -32,7 +32,7 @@ def test_classify_accuracy_ge_90() -> None:
     correct = sum(
         1
         for title, body, labels, expected in _FIXTURES
-        if classify_issue(title, body, labels) == expected
+        if classify_issue.invoke({"title": title, "body": body, "labels": labels}) == expected
     )
     accuracy = correct / len(_FIXTURES)
     assert accuracy >= 0.90, f"Classifier accuracy {accuracy:.0%} < 90%"
@@ -41,6 +41,6 @@ def test_classify_accuracy_ge_90() -> None:
 def test_classify_unknown_returns_string() -> None:
     from codepilot.orchestrator.classifier import classify_issue
 
-    result = classify_issue("miscellaneous task xyz", "", [])
+    result = classify_issue.invoke({"title": "miscellaneous task xyz", "body": "", "labels": []})
     assert isinstance(result, str)
     assert len(result) > 0
