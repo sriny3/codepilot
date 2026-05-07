@@ -55,9 +55,14 @@ def main(argv: list[str] | None = None) -> int:
                 project=cfg.langsmith_project,
             )
 
+        from codepilot.orchestrator.factory import PipelineConfig
+        from codepilot.orchestrator.deep_agent import build_orchestrator
         from codepilot.tui.app import CodePilotApp
 
-        CodePilotApp().run()
+        pipeline_cfg = PipelineConfig.from_settings(cfg)
+        orchestrator = build_orchestrator(pipeline_cfg)
+
+        CodePilotApp(max_log_lines=cfg.tui_max_log_lines).run()
         return 0
 
     print(f"command '{args.command}' not implemented yet", file=sys.stderr)
