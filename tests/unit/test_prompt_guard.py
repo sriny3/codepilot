@@ -112,8 +112,7 @@ class TestNemoPromptGuard:
         assert isinstance(guard, PromptGuard)
 
     def test_make_prompt_guard_returns_nemo_when_nemoguardrails_importable(self) -> None:
-        import importlib.util
+        nemoguardrails = pytest.importorskip("nemoguardrails")  # skip if not installed
         from codepilot.guardrails.prompt import NemoPromptGuard, make_prompt_guard
-        if importlib.util.find_spec("nemoguardrails"):
-            guard = make_prompt_guard()
-            assert isinstance(guard, NemoPromptGuard)
+        guard = make_prompt_guard()
+        assert isinstance(guard, NemoPromptGuard)

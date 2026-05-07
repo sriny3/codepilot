@@ -5,8 +5,10 @@ installed a NeMo-backed subclass can be substituted without changing call sites.
 """
 from __future__ import annotations
 
-import importlib.util
+import importlib.util as _ilu
 import re
+
+_NEMO_AVAILABLE: bool = _ilu.find_spec("nemoguardrails") is not None
 
 from codepilot.guardrails.base import ALLOWED, Decision, GuardResult
 
@@ -93,19 +95,15 @@ class PromptGuard:
 class NemoPromptGuard(PromptGuard):
     """Uses NeMo Guardrails when available; falls back to regex patterns."""
 
-    def validate_text(self, text: str) -> GuardResult:
-        if importlib.util.find_spec("nemoguardrails"):
-            try:
-                return self._nemo_validate(text)
-            except Exception:
-                pass
-        return super().validate_text(text)
+    def __init__(self) -> None:
+        self._rails = None  # lazy init
 
-    def _nemo_validate(self, text: str) -> GuardResult:
-        from nemoguardrails import RailsConfig  # type: ignore[import]
-        from nemoguardrails.integrations.langchain.runnable_rails import RunnableRails  # type: ignore[import]
-        config = RailsConfig.from_content(
-            yaml_content="""
+    def _get_rails(self):
+        if self._rails is None:
+            from nemoguardrails import RailsConfig  # type: ignore[import]
+            from nemoguardrails.integrations.langchain.runnable_rails import RunnableRails  # type: ignore[import]
+            config = RailsConfig.from_content(
+                yaml_content="""
 models: []
 rails:
   input:
@@ -113,10 +111,22 @@ rails:
       - check jailbreak
       - check input sensitive data
 """
-        )
-        rails = RunnableRails(config=config)
+            )
+            self._rails = RunnableRails(config=config)
+        return self._rails
+
+    def _nemo_validate(self, text: str) -> GuardResult:
+        rails = self._get_rails()
         output = rails.invoke({"input": text})
-        if "blocked" in str(output).lower() or "not allowed" in str(output).lower():
+        # Check structured output first, then fall back to string inspection
+        if isinstance(output, dict) and output.get("blocked"):
+            return GuardResult(
+                decision=Decision.BLOCK,
+                rule="nemo_rails",
+                reason="NeMo Guardrails blocked input",
+            )
+        out_str = str(output).lower()
+        if "blocked" in out_str or "not allowed" in out_str or "i am not able" in out_str:
             return GuardResult(
                 decision=Decision.BLOCK,
                 rule="nemo_rails",
@@ -124,9 +134,17 @@ rails:
             )
         return ALLOWED
 
+    def validate_text(self, text: str) -> GuardResult:
+        if _NEMO_AVAILABLE:
+            try:
+                return self._nemo_validate(text)
+            except Exception:
+                pass
+        return super().validate_text(text)
+
 
 def make_prompt_guard() -> PromptGuard:
     """Return NemoPromptGuard if nemoguardrails is installed, else PromptGuard."""
-    if importlib.util.find_spec("nemoguardrails"):
+    if _NEMO_AVAILABLE:
         return NemoPromptGuard()
     return PromptGuard()
