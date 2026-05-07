@@ -72,3 +72,43 @@ class TestCacheRepoMap:
         data = json.loads(cache_file.read_text())
         assert data["sha"] == "deadbeef"
         assert data["map"] == "map content"
+
+    def test_cache_succeeds_when_parent_dirs_missing(self, tmp_path: Path) -> None:
+        from codepilot.agents.tools.repo_tools import cache_repo_map
+
+        # Use a nested subdir that has never been created
+        nested_root = tmp_path / "subdir"
+        assert not nested_root.exists()
+
+        with patch("codepilot.agents.tools.repo_tools._git_head_sha", return_value="abc"):
+            result = cache_repo_map.invoke({"root_path": str(nested_root), "map_text": "x"})
+
+        assert result is None
+        assert (nested_root / ".codepilot" / "repo_map.json").exists()
+
+
+class TestBuildRepoMap:
+    def test_build_repo_map_returns_map_text(self) -> None:
+        from codepilot.agents.tools.repo_tools import build_repo_map
+
+        with patch("codepilot.agents.repo_explorer.map.RepoMap") as MockRepoMap:
+            mock_instance = MockRepoMap.build.return_value
+            mock_instance.to_text.return_value = "mocked map text"
+
+            result = build_repo_map.invoke({"root_path": "/tmp"})
+
+        assert result == "mocked map text"
+
+
+class TestRetrieveRelevantFilesErrorCase:
+    def test_returns_empty_list_on_error(self) -> None:
+        from codepilot.agents.tools.repo_tools import retrieve_relevant_files
+
+        with patch("codepilot.agents.repo_explorer.map.RepoMap") as MockRepoMap:
+            MockRepoMap.build.side_effect = RuntimeError("boom")
+
+            result = retrieve_relevant_files.invoke(
+                {"issue_body": "some issue", "repo_root": "/tmp"}
+            )
+
+        assert result == []
