@@ -29,6 +29,5 @@ def min_env(monkeypatch: pytest.MonkeyPatch, clean_env: None) -> None:
     """Minimal valid env for Settings()."""
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
     monkeypatch.setenv("GITHUB_APP_PRIVATE_KEY", "fake-key")
-    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")   # optional, kept for backwards compat
     monkeypatch.setenv("REPO_FULL_NAME", "acme/widgets")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")

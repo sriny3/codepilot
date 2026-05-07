@@ -11,8 +11,9 @@ REDACTED = "***REDACTED***"
 
 # Field names whose value is always a secret.
 SECRET_KEYS = frozenset({
-    "github_token", "openai_api_key", "anthropic_api_key", "qdrant_api_key",
-    "langsmith_api_key", "authorization", "api_key", "token", "password", "secret",
+    "github_token", "github_app_private_key", "openai_api_key", "anthropic_api_key",
+    "qdrant_api_key", "langsmith_api_key", "authorization", "api_key", "token",
+    "password", "secret",
 })
 
 # Heuristic patterns. Conservative — false positives are fine, false negatives are not.

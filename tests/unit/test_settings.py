@@ -10,7 +10,7 @@ class TestRequiredFields:
     def test_loads_from_env(self, min_env: None) -> None:
         s = Settings()  # type: ignore[call-arg]
         assert s.github_app_id == "12345"
-        assert s.github_app_private_key == "fake-key"
+        assert s.github_app_private_key.get_secret_value() == "fake-key"
         assert s.repo_full_name == "acme/widgets"
         assert s.openai_api_key is not None
 
@@ -135,6 +135,7 @@ class TestSecretHandling:
         s = Settings()  # type: ignore[call-arg]
         assert "ghp_test" not in repr(s)
         assert "sk-test" not in repr(s)
+        assert "fake-key" not in repr(s)    # github_app_private_key must be masked
 
 
 class TestCachedAccessor:

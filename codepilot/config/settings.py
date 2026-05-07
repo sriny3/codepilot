@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     github_app_id: str
-    github_app_private_key: str
+    github_app_private_key: SecretStr
     github_token: SecretStr | None = None           # optional, backwards compat
     repo_full_name: str = Field(pattern=r"^[\w.-]+/[\w.-]+$")
 

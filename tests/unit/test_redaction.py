@@ -5,7 +5,7 @@ from codepilot.observability.redaction import REDACTED, redact
 
 class TestSecretKeys:
     @pytest.mark.parametrize("key", [
-        "github_token", "openai_api_key", "anthropic_api_key",
+        "github_token", "github_app_private_key", "openai_api_key", "anthropic_api_key",
         "authorization", "api_key", "token", "password", "secret",
     ])
     def test_secret_key_value_redacted(self, key: str) -> None:
