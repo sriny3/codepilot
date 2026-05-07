@@ -6,8 +6,6 @@ from enum import Enum
 
 
 class TaskStatus(str, Enum):
-    """Display-side task status, mirrors TaskState values."""
-
     PENDING = "PENDING"
     TRIAGED = "TRIAGED"
     EXPLORING = "EXPLORING"
@@ -18,7 +16,6 @@ class TaskStatus(str, Enum):
     FAILED = "FAILED"
 
 
-# Maps WorkingMemory state names to TaskStatus
 _STATE_TO_STATUS: dict[str, TaskStatus] = {s.value: s for s in TaskStatus}
 
 
@@ -31,6 +28,8 @@ class TaskRow:
     status: TaskStatus = TaskStatus.PENDING
     retry_count: int = 0
     pr_url: str = ""
+    skill: str = ""
+    todos: list[str] = field(default_factory=list)
 
     _TITLE_MAX = 38
 
@@ -57,6 +56,8 @@ class TaskRow:
         state: str,
         retry_count: int = 0,
         pr_url: str = "",
+        skill: str = "",
+        todos: list[str] | None = None,
     ) -> "TaskRow":
         status = _STATE_TO_STATUS.get(state, TaskStatus.PENDING)
         return cls(
@@ -65,4 +66,6 @@ class TaskRow:
             status=status,
             retry_count=retry_count,
             pr_url=pr_url,
+            skill=skill,
+            todos=todos or [],
         )
