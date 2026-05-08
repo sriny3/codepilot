@@ -154,5 +154,5 @@ class TestGuardrailEnforcement:
 
     def test_hitl_error_message_includes_approval_hint(self, sandbox: LocalSandbox) -> None:
         with pytest.raises(PermissionError) as exc_info:
-            sandbox.execute("rm -rf /tmp")
+            sandbox.execute("rm -rf ./build_artifacts")
         assert "HITL" in str(exc_info.value) or "approval" in str(exc_info.value).lower()

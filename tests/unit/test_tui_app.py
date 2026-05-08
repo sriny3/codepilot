@@ -2,7 +2,6 @@
 import pytest
 
 from codepilot.tui.app import CodePilotApp
-from codepilot.tui.models import TaskRow, TaskStatus
 
 
 @pytest.mark.asyncio
@@ -34,54 +33,54 @@ async def test_log_widget_present() -> None:
 
 
 @pytest.mark.asyncio
-async def test_table_has_five_columns() -> None:
+async def test_table_has_three_columns() -> None:
     from textual.widgets import DataTable
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         table = app.query_one(DataTable)
-        assert len(table.columns) == 5
+        assert len(table.columns) == 3
 
 
 @pytest.mark.asyncio
-async def test_upsert_task_adds_row() -> None:
+async def test_upsert_issue_adds_row() -> None:
     from textual.widgets import DataTable
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.upsert_task(TaskRow(issue_id=42, title="fix login", status=TaskStatus.EXPLORING))
+        app.upsert_issue(42, "fix login", "EXPLORING")
         await pilot.pause()
         table = app.query_one(DataTable)
         assert table.row_count == 1
 
 
 @pytest.mark.asyncio
-async def test_upsert_task_updates_existing_row() -> None:
+async def test_upsert_issue_updates_existing_row() -> None:
     from textual.widgets import DataTable
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.upsert_task(TaskRow(issue_id=1, title="t", status=TaskStatus.EXPLORING))
+        app.upsert_issue(1, "t", "EXPLORING")
         await pilot.pause()
-        app.upsert_task(TaskRow(issue_id=1, title="t", status=TaskStatus.DONE))
+        app.upsert_issue(1, "t", "DONE")
         await pilot.pause()
         table = app.query_one(DataTable)
         assert table.row_count == 1  # still one row, not two
 
 
 @pytest.mark.asyncio
-async def test_upsert_multiple_tasks() -> None:
+async def test_upsert_multiple_issues() -> None:
     from textual.widgets import DataTable
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.upsert_task(TaskRow(issue_id=1, title="a"))
-        app.upsert_task(TaskRow(issue_id=2, title="b"))
-        app.upsert_task(TaskRow(issue_id=3, title="c"))
+        app.upsert_issue(1, "a", "PENDING")
+        app.upsert_issue(2, "b", "PENDING")
+        app.upsert_issue(3, "c", "PENDING")
         await pilot.pause()
         table = app.query_one(DataTable)
         assert table.row_count == 3
