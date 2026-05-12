@@ -5,6 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import DataTable, Input, Label, ListItem, ListView, Static
 from textual.widgets._data_table import CellDoesNotExist
+from rich.text import Text as RichText
 
 _STATE_ICON: dict[str, str] = {
     "TRIAGED": "●",
@@ -54,32 +55,31 @@ class IssuesPanel(Vertical):
 
     DEFAULT_CSS = """
     IssuesPanel {
-        border: solid $panel;
+        border: tall #1e2a38;
         height: 1fr;
+        background: #0f1923;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Static("GitHub Issues", classes="panel-title")
-        yield DataTable(id="issues-table")
+        yield DataTable(id="issues-table", show_header=False, show_cursor=True)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.add_column("#", key="num")
-        table.add_column("Title", key="title")
-        table.add_column("State", key="state")
+        table.add_column("issue", key="issue")
 
     def upsert_issue(self, issue_id: int, title: str, state: str) -> None:
         table = self.query_one(DataTable)
         key = str(issue_id)
+        color = _STATE_COLOR.get(state, "#5c6370")
         icon = _STATE_ICON.get(state, "●")
-        state_cell = f"{icon} {state.lower()}"
+        short_title = title[:28]
+        cell = RichText(f"{icon} #{issue_id} {short_title}", style=color)
         try:
-            table.update_cell(key, "num", f"#{issue_id}")
-            table.update_cell(key, "title", title[:36])
-            table.update_cell(key, "state", state_cell)
+            table.update_cell(key, "issue", cell)
         except CellDoesNotExist:
-            table.add_row(f"#{issue_id}", title[:36], state_cell, key=key)
+            table.add_row(cell, key=key)
 
 
 class ActiveTaskPanel(Vertical):

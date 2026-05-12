@@ -24,23 +24,23 @@ async def test_data_table_present() -> None:
 
 @pytest.mark.asyncio
 async def test_log_widget_present() -> None:
-    from textual.widgets import Log
+    from textual.widgets import RichLog
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.query_one(Log) is not None
+        assert app.query_one(RichLog) is not None
 
 
 @pytest.mark.asyncio
-async def test_table_has_three_columns() -> None:
+async def test_table_has_one_column() -> None:
     from textual.widgets import DataTable
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         table = app.query_one(DataTable)
-        assert len(table.columns) == 3
+        assert len(table.columns) == 1
 
 
 @pytest.mark.asyncio
@@ -88,15 +88,15 @@ async def test_upsert_multiple_issues() -> None:
 
 @pytest.mark.asyncio
 async def test_append_log_writes_line() -> None:
-    from textual.widgets import Log
+    from textual.widgets import RichLog
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         app.append_log("issue.picked_up issue_id=42")
         await pilot.pause()
-        log = app.query_one(Log)
-        assert log.line_count >= 1
+        log = app.query_one(RichLog)
+        assert len(log.lines) >= 1
 
 
 @pytest.mark.asyncio
