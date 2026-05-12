@@ -5,6 +5,12 @@ import sys
 from typing import Any
 
 
+def _extract_pr_url(text: str) -> str | None:
+    """Extract first GitHub PR URL from text."""
+    m = re.search(r"https://github\.com/[^\s<>\"']+/pull/\d+", text)
+    return m.group(0) if m else None
+
+
 _STATE_ORDER = ["TRIAGED", "EXPLORING", "IMPLEMENTING", "TESTING", "PR_OPENED", "DONE"]
 
 _TOOL_STATE: dict[str, str] = {
@@ -358,25 +364,37 @@ def main(argv: list[str] | None = None) -> int:
                             timer.start()
                             _heartbeat.append(timer)
 
+                        def _hitl_check(intr_value: object) -> bool:
+                            """Show HITL panel for one interrupt value. Returns True if approved."""
+                            if isinstance(intr_value, dict) and "action_requests" in intr_value:
+                                reqs = intr_value["action_requests"]
+                                op = reqs[0]["name"] if reqs else "unknown"
+                                desc = reqs[0].get("description", op)
+                            else:
+                                op = str(intr_value)
+                                desc = op
+                            _log.info("hitl.interrupt", operation=op)
+                            app.post_append_log(f"[HITL] Approval required: {op}")
+                            approved = hitl.request_approval(op, {"value": desc})
+                            if not approved:
+                                _log.info("hitl.rejected", operation=op)
+                                raise RuntimeError(f"HITL rejected: {op}")
+                            _log.info("hitl.approved", operation=op)
+                            app.post_append_log(f"[HITL] Approved: {op}")
+                            return True
+
                         def _process_event(event: object) -> bool:
                             """Process one stream event. Returns True if an interrupt was hit."""
                             nonlocal prev_msg_count, retry, last_state
                             if not isinstance(event, dict):
                                 return False
-                            interrupts = event.get("__interrupt__")
-                            if interrupts:
+                            raw_ints = event.get("__interrupt__")
+                            if raw_ints:
                                 _cancel_heartbeat()
-                                intr = interrupts[0] if isinstance(interrupts, list) else interrupts
-                                op = str(intr.get("value", intr) if isinstance(intr, dict) else intr)
-                                _log.info("hitl.interrupt", operation=op)
-                                app.post_append_log(f"[HITL] Approval required: {op}")
-                                approved = hitl.request_approval(op, intr if isinstance(intr, dict) else {"value": op})
-                                if not approved:
-                                    _log.info("hitl.rejected", operation=op)
-                                    raise RuntimeError(f"HITL rejected: {op}")
-                                _log.info("hitl.approved", operation=op)
-                                app.post_append_log(f"[HITL] Approved: {op}")
-                                return True
+                                intr = raw_ints[0] if isinstance(raw_ints, (list, tuple)) else raw_ints
+                                # LangGraph 1.x: Interrupt is a dataclass with .value
+                                intr_value = intr.value if hasattr(intr, "value") else intr
+                                return _hitl_check(intr_value)
                             messages = event.get("messages", [])
                             for msg in messages[prev_msg_count:]:
                                 for tc in getattr(msg, "tool_calls", None) or []:
@@ -392,14 +410,27 @@ def main(argv: list[str] | None = None) -> int:
                                     _cancel_heartbeat()
                                     sub_name, t0 = _pending_tasks.popleft() if _pending_tasks else ("subagent", _time.monotonic())
                                     elapsed = _time.monotonic() - t0
-                                    summary = _summarize_result("task", getattr(msg, "content", ""))
+                                    content = getattr(msg, "content", "")
+                                    summary = _summarize_result("task", content)
                                     _log.info("subagent.done", subagent=sub_name, elapsed_s=round(elapsed, 1))
                                     app.post_heartbeat("")
                                     app.post_append_log(
                                         f"[{sub_name}] done ({elapsed:.0f}s) — {summary}",
                                         raw=_msg_raw_line(msg),
                                     )
+                                    # Show PR URL when pr_agent finishes
+                                    if sub_name == "pr_agent" and isinstance(content, str):
+                                        pr_url = _extract_pr_url(content)
+                                        if pr_url:
+                                            app.post_append_log(f"[PR] {pr_url}")
                                 else:
+                                    # Show PR URL from direct open_pr tool result
+                                    if tool_name == "open_pr":
+                                        content = getattr(msg, "content", "")
+                                        if isinstance(content, str):
+                                            pr_url = _extract_pr_url(content)
+                                            if pr_url:
+                                                app.post_append_log(f"[PR] {pr_url}")
                                     line = _msg_log_line(msg)
                                     if line:
                                         app.post_append_log(line, raw=_msg_raw_line(msg))
@@ -414,7 +445,26 @@ def main(argv: list[str] | None = None) -> int:
                                 app.post_update_active_task(issue_id, title, state, skill, retry, todos)
                             return False
 
+                        def _check_snapshot_interrupts() -> bool:
+                            """Fallback: detect interrupts not surfaced in stream events."""
+                            try:
+                                snap = orchestrator.get_state(config)
+                                pending = list(snap.interrupts)
+                                for task in snap.tasks:
+                                    pending.extend(task.interrupts)
+                                if not pending:
+                                    return False
+                                _cancel_heartbeat()
+                                intr_value = pending[0].value if hasattr(pending[0], "value") else pending[0]
+                                return _hitl_check(intr_value)
+                            except RuntimeError:
+                                raise
+                            except Exception:
+                                return False
+
                         try:
+                            from langgraph.types import Command as _LGCommand
+                            _approve_cmd = _LGCommand(resume={"decisions": [{"type": "approve"}]})
                             stream_input: object = {"messages": [{"role": "user", "content": task_content}]}
                             while True:
                                 interrupted = False
@@ -423,9 +473,12 @@ def main(argv: list[str] | None = None) -> int:
                                         interrupted = True
                                         break
                                 if not interrupted:
+                                    # Subgraph interrupts may not surface in stream events
+                                    interrupted = _check_snapshot_interrupts()
+                                if not interrupted:
                                     break
-                                # Resume graph after HITL approval (None = resume from checkpoint)
-                                stream_input = None
+                                # Resume graph after HITL approval with correct decision format
+                                stream_input = _approve_cmd
                         except Exception as exc:
                             _cancel_heartbeat()
                             _log.error("orchestrator.error", error=str(exc))
