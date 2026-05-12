@@ -102,13 +102,32 @@ def get_issue(issue_number: int) -> dict:
 
 
 @tool
-def create_branch(branch_name: str, base_branch: str) -> str:
-    """Create a new git branch from `base_branch`. Returns the new branch name."""
-    wrapper = _get_wrapper()
-    repo = wrapper.github_repo_instance
-    base_sha = repo.get_branch(base_branch).commit.sha
-    repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_sha)
-    return branch_name
+def create_branch(branch_name: str, base_branch: str) -> dict | str:
+    """Create a new git branch from `base_branch` (e.g. "main"). If base_branch is missing, falls back to repo default. Returns the new branch name on success, or {"error": ...} on failure."""
+    try:
+        wrapper = _get_wrapper()
+        repo = wrapper.github_repo_instance
+        # Auto-detect default branch if requested base doesn't exist
+        try:
+            base = repo.get_branch(base_branch)
+        except Exception:
+            default = repo.default_branch
+            if default == base_branch:
+                raise
+            base = repo.get_branch(default)
+            base_branch = default
+        base_sha = base.commit.sha
+        # If branch already exists, return success (idempotent)
+        try:
+            existing = repo.get_branch(branch_name)
+            if existing is not None:
+                return {"branch_name": branch_name, "note": "already_exists", "base_branch": base_branch}
+        except Exception:
+            pass
+        repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_sha)
+        return {"branch_name": branch_name, "base_branch": base_branch, "base_sha": base_sha}
+    except Exception as exc:
+        return {"error": str(exc), "branch_name": branch_name, "base_branch": base_branch}
 
 
 @tool
