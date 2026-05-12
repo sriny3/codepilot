@@ -12,9 +12,33 @@ if TYPE_CHECKING:
     from codepilot.tui.hitl import HITLCoordinator
 
 
+_TRACE_PATH = Path("logs/tool-trace.log")
+
+
 def _trace(name: str, **kw: Any) -> None:
-    summary = ", ".join(f"{k}={str(v)[:40]!r}" for k, v in kw.items())
-    print(f"[TOOL-CALL] {name}({summary})", file=sys.stderr, flush=True)
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    summary = ", ".join(f"{k}={str(v)[:80]!r}" for k, v in kw.items())
+    line = f"{ts} [TOOL-CALL] {name}({summary})"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        _TRACE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _TRACE_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _trace_result(name: str, result: Any) -> None:
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    line = f"{ts} [TOOL-RESULT] {name} -> {str(result)[:300]}"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        with _TRACE_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
 
 # Module-level HITL gate. Set once from __main__.py before orchestrator creation.
 # Tools call this gate before executing destructive GitHub operations.
@@ -111,6 +135,7 @@ def get_issue(issue_number: int) -> dict:
 def create_branch(branch_name: str, base_branch: str) -> dict | str:
     """Create a new git branch from `base_branch` (e.g. "main"). If base_branch is missing, falls back to repo default. Returns the new branch name on success, or {"error": ...} on failure."""
     _trace("create_branch", branch_name=branch_name, base_branch=base_branch)
+    result: Any
     try:
         wrapper = _get_wrapper()
         repo = wrapper.github_repo_instance
@@ -128,13 +153,17 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
         try:
             existing = repo.get_branch(branch_name)
             if existing is not None:
-                return {"branch_name": branch_name, "note": "already_exists", "base_branch": base_branch}
+                result = {"branch_name": branch_name, "note": "already_exists", "base_branch": base_branch}
+                _trace_result("create_branch", result)
+                return result
         except Exception:
             pass
         repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_sha)
-        return {"branch_name": branch_name, "base_branch": base_branch, "base_sha": base_sha}
+        result = {"branch_name": branch_name, "base_branch": base_branch, "base_sha": base_sha}
     except Exception as exc:
-        return {"error": str(exc), "branch_name": branch_name, "base_branch": base_branch}
+        result = {"error": f"{type(exc).__name__}: {exc}", "branch_name": branch_name, "base_branch": base_branch}
+    _trace_result("create_branch", result)
+    return result
 
 
 @tool
@@ -146,7 +175,9 @@ def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str
         {"branch": branch, "files": len(file_paths), "message": message[:80]},
     )
     if err:
-        return {"error": err}
+        result: Any = {"error": err}
+        _trace_result("commit_files", result)
+        return result
     try:
         wrapper = _get_wrapper()
         committed = []
@@ -154,15 +185,18 @@ def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str
             try:
                 content = Path(path).read_text(encoding="utf-8")
             except FileNotFoundError:
-                content = ""  # file deleted or not found — skip content
+                content = ""
             wrapper.create_file(path, message, content, branch=branch)
             committed.append(path)
-        return f"Committed {len(committed)} file(s) to {branch}"
+        result = f"Committed {len(committed)} file(s) to {branch}"
     except Exception as exc:
         msg = str(exc).lower()
         if "merge conflict" in msg or "409" in msg or "422" in msg:
-            return {"error": "merge_conflict", "message": str(exc)}
-        raise
+            result = {"error": "merge_conflict", "message": str(exc)}
+        else:
+            result = {"error": f"{type(exc).__name__}: {exc}"}
+    _trace_result("commit_files", result)
+    return result
 
 
 @tool
