@@ -169,6 +169,12 @@ class CodePilotApp(App[None]):
     ) -> None:
         self._safe_call(self.update_active_task, issue_id, title, state, skill, retry, todos)
 
+    def update_heartbeat(self, text: str) -> None:
+        self.query_one(ActiveTaskPanel).update_heartbeat(text)
+
+    def post_heartbeat(self, text: str) -> None:
+        self._safe_call(self.update_heartbeat, text)
+
     # ── HITL approval input ──────────────────────────────────────────────────
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
