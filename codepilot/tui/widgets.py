@@ -39,6 +39,20 @@ _STATE_COLOR: dict[str, str] = {
 }
 
 
+def _truncate_words(text: str, max_len: int) -> str:
+    """Truncate text on word boundary with ellipsis if over max_len."""
+    text = text.strip()
+    if len(text) <= max_len:
+        return text
+    # Reserve 1 char for ellipsis. Prefer last word boundary, but only if it
+    # leaves at least half of max_len — otherwise hard-truncate to avoid losing
+    # almost everything to a stray early space.
+    cutoff = text.rfind(" ", 0, max_len - 1)
+    if cutoff < max_len // 2:
+        cutoff = max_len - 1
+    return text[:cutoff].rstrip(" ,.;:-") + "…"
+
+
 def _log_color(message: str) -> str:
     """Pick a display color for a log line based on keywords."""
     msg = message.lower()
@@ -75,7 +89,7 @@ class IssuesPanel(Vertical):
         key = str(issue_id)
         color = _STATE_COLOR.get(state, "#5c6370")
         icon = _STATE_ICON.get(state, "●")
-        short_title = title[:28]
+        short_title = _truncate_words(title, 28)
         cell = RichText(f"{icon} #{issue_id} {short_title}", style=color)
         try:
             table.update_cell(key, "issue", cell)
