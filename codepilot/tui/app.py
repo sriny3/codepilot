@@ -11,8 +11,9 @@ from textual.app import App, ComposeResult
 from textual.containers import Grid
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, Label, RichLog
+from rich.text import Text as RichText
 
-from codepilot.tui.widgets import ActiveTaskPanel, ApprovalPanel, IssuesPanel
+from codepilot.tui.widgets import ActiveTaskPanel, ApprovalPanel, IssuesPanel, _log_color
 
 if TYPE_CHECKING:
     from codepilot.tui.hitl import HITLCoordinator
@@ -118,9 +119,10 @@ class CodePilotApp(App[None]):
     # ── Panel update helpers (thread-safe via call_from_thread) ──────────────
 
     def append_log(self, message: str, raw: str | None = None) -> None:
-        self.query_one("#event-log", RichLog).write(message)
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        colored = RichText(f"{ts} {message}", style=_log_color(message))
+        self.query_one("#event-log", RichLog).write(colored)
         if self._pipeline_log is not None:
-            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
             self._pipeline_log.write(f"{ts} {raw if raw is not None else message}\n")
 
     def _safe_call(self, fn: Any, *args: Any) -> None:
