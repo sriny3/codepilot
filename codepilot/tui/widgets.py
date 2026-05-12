@@ -133,29 +133,35 @@ class ActiveTaskPanel(Vertical):
 
 
 class ApprovalPanel(Vertical):
-    """Bottom-right: HITL gate — hidden until interrupt fires."""
+    """Bottom row (full-width): HITL gate — hidden until interrupt fires."""
 
     DEFAULT_CSS = """
     ApprovalPanel {
-        border: solid $warning;
-        height: 1fr;
+        border: tall #1e2a38;
+        background: #0f1923;
         display: none;
     }
     ApprovalPanel.--visible {
         display: block;
+        border: tall #5cb85c;
+        background: #0a1a0a;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Static("Awaiting Approval", id="approval-title")
         yield Static("", id="approval-description")
-        yield Input(placeholder="approve / reject / inspect", id="approval-input")
+        yield Input(placeholder="approve / reject", id="approval-input")
 
     def show_operation(self, operation: str, details: dict) -> None:
         self.add_class("--visible")
-        self.query_one("#approval-title", Static).update(f"⚠ {operation}")
-        detail_str = "\n".join(f"  {k}: {v}" for k, v in details.items())
-        self.query_one("#approval-description", Static).update(detail_str)
+        self.query_one("#approval-title", Static).update(
+            RichText(f"⚠ APPROVAL REQUIRED — {operation}", style="#5cb85c")
+        )
+        desc = details.get("value", operation)
+        self.query_one("#approval-description", Static).update(
+            f"{desc}\n[A] Approve   [R] Reject"
+        )
 
     def hide(self) -> None:
         self.remove_class("--visible")
