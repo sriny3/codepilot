@@ -42,7 +42,7 @@ def add_lesson(
     files: list[str],
     approach: str,
     outcome: str,
-) -> None:
+) -> str:
     """Record a lesson learned after completing a task."""
     from codepilot.memory.episodic import TaskOutcome
 
@@ -56,3 +56,4 @@ def add_lesson(
         note=approach,
     )
     store.record_task(session_id=SESSION_ID_DEFAULT, outcome=task)
+    return f"lesson recorded: {issue_type} in {repo}"
