@@ -3,10 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import structlog
 from deepagents import FilesystemPermission, create_deep_agent  # type: ignore[import]
-from langchain_community.agent_toolkits.github.toolkit import GitHubToolkit  # type: ignore[import]
-from langchain_community.utilities.github import GitHubAPIWrapper  # type: ignore[import]
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
@@ -30,49 +27,41 @@ from codepilot.orchestrator.classifier import classify_issue
 if TYPE_CHECKING:
     from codepilot.orchestrator.factory import PipelineConfig
 
-_log = structlog.get_logger(__name__)
 
 ORCHESTRATOR_PROMPT = """\
-You are an autonomous coding agent. For each GitHub issue:
+You are an autonomous coding agent. Each task message ends with "Workspace: <path>".
+Extract that path and pass it verbatim as workspace_path in every subagent task description.
+IMPORTANT: The workspace path uses forward slashes (e.g. ".codepilot/workspace/financebot").
+Use it EXACTLY as given — do NOT add a leading "/" or convert to any other format.
+
+AUTONOMY RULES — strictly required:
+- NEVER ask the user for clarification. Always make a best-effort judgment and proceed.
+- NEVER stop to report status or ask for next steps. Keep going until the pipeline is done or failed.
+- If the issue is vague (e.g. "documentation needs update"), infer the most impactful changes from the repo map and proceed.
+- Only surface a HITL interrupt on: 3rd consecutive test failure, or a merge conflict.
+
+For each GitHub issue:
 1. Call classify_issue to determine task type (bug_fix, feature_addition, dependency_update, documentation, config_change).
 2. Call query_lessons for top-3 past lessons and include them in context.
 3. Call write_todos to plan the implementation as a checklist.
-4. Call task("repo_explorer", ...) to map the repo and find relevant files.
-5. Call task("coder", ...) injecting the classified skill name and relevant files.
+4. Call task("repo_explorer", description="... workspace_path=<path>") to map the repo and find relevant files.
+5. Call task("coder", description="... workspace_path=<path> skill=<skill> relevant_files=<files>").
 6. On test failure: retry coder up to 3 times with failure details.
-7. Call task("pr_agent", ...) when tests pass to open the PR.
+7. Call task("pr_agent", description="... workspace_path=<path>") when tests pass to open the PR.
 8. Call add_lesson on success with the approach and outcome.
 
+IMPORTANT: Never call ls, read_file, write_file, or execute directly. All filesystem operations go through subagents.
 On merge conflict response from commit_files: do NOT retry — report FAILED immediately.
 State progression: TRIAGED → EXPLORING → IMPLEMENTING → TESTING → PR_OPENED → DONE | FAILED
 """
 
 
-def _get_toolkit_tools() -> list:
-    """Build GitHubToolkit tools from settings. Returns empty list on failure (e.g. invalid key in tests)."""
-    from codepilot.config.settings import get_settings
-
-    settings = get_settings()
-    try:
-        github_wrapper = GitHubAPIWrapper(
-            github_app_id=settings.github_app_id,
-            github_app_private_key=settings.github_app_private_key.get_secret_value(),
-            github_repository=settings.repo_full_name,
-        )
-        return GitHubToolkit.from_github_api_wrapper(github_wrapper).get_tools()
-    except Exception as exc:
-        _log.warning("github_toolkit_unavailable", error=str(exc))
-        return []
-
 
 def build_orchestrator(cfg: "PipelineConfig") -> Any:  # type: ignore[return]
     """Build and return the DeepAgents CompiledStateGraph orchestrator."""
-    toolkit_tools = _get_toolkit_tools()
-
     return create_deep_agent(
-        model="anthropic:claude-sonnet-4-6",
+        model="anthropic:claude-haiku-4-5-20251001",
         tools=[
-            *toolkit_tools,
             classify_issue,
             build_repo_map,
             retrieve_relevant_files,
@@ -93,10 +82,6 @@ def build_orchestrator(cfg: "PipelineConfig") -> Any:  # type: ignore[return]
             FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
             FilesystemPermission(operations=["read"], paths=["/**"], mode="allow"),
         ],
-        interrupt_on={
-            "open_pr": True,
-            "commit_files": True,
-        },
         store=InMemoryStore(),
         checkpointer=MemorySaver(),
         memory=[],

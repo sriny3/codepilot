@@ -2,15 +2,43 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from langchain_community.utilities.github import GitHubAPIWrapper  # type: ignore[import]
 from langchain_core.tools import tool
+
+if TYPE_CHECKING:
+    from codepilot.tui.hitl import HITLCoordinator
+
+# Module-level HITL gate. Set once from __main__.py before orchestrator creation.
+# Tools call this gate before executing destructive GitHub operations.
+_hitl_gate: "HITLCoordinator | None" = None
+
+
+def set_hitl_gate(gate: "HITLCoordinator | None") -> None:
+    global _hitl_gate
+    _hitl_gate = gate
+
+
+def _require_approval(operation: str, details: dict[str, Any]) -> str | None:
+    """Call HITL gate. Returns error string if rejected, None if approved (or no gate)."""
+    if _hitl_gate is None:
+        return None
+    approved = _hitl_gate.request_approval(operation, details)
+    if not approved:
+        return f"rejected: user rejected {operation}"
+    return None
 
 
 def _get_wrapper() -> GitHubAPIWrapper:
     from codepilot.config.settings import get_settings
 
     cfg = get_settings()
+    if cfg.github_token:
+        return GitHubAPIWrapper(
+            github_access_token=cfg.github_token.get_secret_value(),
+            github_repository=cfg.repo_full_name,
+        )
     return GitHubAPIWrapper(
         github_app_id=cfg.github_app_id,
         github_app_private_key=cfg.github_app_private_key.get_secret_value(),
@@ -41,14 +69,19 @@ def list_open_issues(labels: list[str], exclude_ids: list[int]) -> list[dict]:
 
 @tool
 def get_issue(issue_number: int) -> dict:
-    """Get a single GitHub issue by number."""
-    wrapper = _get_wrapper()
-    issue = wrapper.get_issue(issue_number)
-    return {
-        "number": issue_number,
-        "title": issue.get("title", ""),
-        "body": issue.get("body", ""),
-    }
+    """Get a single GitHub issue by number. Returns error dict on failure."""
+    try:
+        wrapper = _get_wrapper()
+        # Use the PyGithub repo instance directly — GitHubAPIWrapper.get_issue() has
+        # inconsistent return type across LangChain versions (str vs dict vs object).
+        issue = wrapper.github_repo_instance.get_issue(number=issue_number)
+        return {
+            "number": issue.number,
+            "title": issue.title,
+            "body": issue.body or "",
+        }
+    except Exception as exc:
+        return {"error": str(exc), "number": issue_number}
 
 
 @tool
@@ -64,6 +97,12 @@ def create_branch(branch_name: str, base_branch: str) -> str:
 @tool
 def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str:
     """Commit local file contents to a GitHub branch. Reads each file from disk. Returns error dict on merge conflict, string confirmation on success."""
+    err = _require_approval(
+        "commit_files",
+        {"branch": branch, "files": len(file_paths), "message": message[:80]},
+    )
+    if err:
+        return {"error": err}
     try:
         wrapper = _get_wrapper()
         committed = []
@@ -92,6 +131,12 @@ def open_pr(
     reviewers: list[str],
 ) -> dict:
     """Open a GitHub pull request. Applies labels and reviewer requests (best-effort). Returns pr_number and url."""
+    err = _require_approval(
+        "open_pr",
+        {"title": title[:80], "head": head, "base": base},
+    )
+    if err:
+        return {"error": err}
     wrapper = _get_wrapper()
     pr = wrapper.create_pull(title=title, body=body, head=head, base=base)
     pr_number = getattr(pr, "number", 0)

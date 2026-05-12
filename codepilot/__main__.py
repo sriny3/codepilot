@@ -278,6 +278,9 @@ def main(argv: list[str] | None = None) -> int:
         hitl = HITLCoordinator(app)
         app._hitl = hitl
 
+        from codepilot.agents.tools.github_tools import set_hitl_gate
+        set_hitl_gate(hitl)
+
         orchestrator = build_orchestrator(pipeline_cfg)
 
         # Build IssuePoller if a token is available for PyGithub.
