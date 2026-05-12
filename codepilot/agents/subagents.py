@@ -11,40 +11,56 @@ from codepilot.agents.tools.repo_tools import (
     load_cached_repo_map,
     retrieve_relevant_files,
 )
+from codepilot.agents.tools.github_tools import commit_files, create_branch, open_pr
 from codepilot.agents.tools.test_tools import parse_test_output, run_tests
 
 REPO_EXPLORER_PROMPT = """\
-You map a repository for a coding task.
-1. Call load_cached_repo_map first; if it returns None, call build_repo_map then cache_repo_map.
-2. Call retrieve_relevant_files with the issue description.
-3. Return structured output: {"repo_map_path": "...", "relevant_files": [...]}
+You map a repository for a coding task. Your task description contains workspace_path=<path>.
+Extract that path and use it as root_path for all tool calls.
+IMPORTANT: Use the path EXACTLY as given (forward slashes, e.g. ".codepilot/workspace/financebot"). Do NOT add a leading "/".
+1. Call load_cached_repo_map(root_path=<workspace_path>).
+   If it returns None, call build_repo_map(root_path=<workspace_path>), then cache_repo_map(map_text=<result>, root_path=<workspace_path>).
+2. Call retrieve_relevant_files(issue_body=<issue description>, repo_root=<workspace_path>).
+3. Return structured output: {"repo_map": "<map text>", "relevant_files": [...]}
+Do NOT use ls or any other file tool — only the provided build_repo_map/load_cached_repo_map/retrieve_relevant_files tools.
 """
 
 CODER_PROMPT = """\
-You implement code changes in the sandbox.
-1. Read relevant files with read_file.
+You implement code changes. Your task description contains workspace_path=<path>.
+IMPORTANT: Use workspace_path EXACTLY as given (e.g. ".codepilot/workspace/financebot"). Do NOT add a leading "/".
+Build file paths as: <workspace_path>/<relative_file_path> (e.g. ".codepilot/workspace/financebot/README.md").
+1. Read relevant files with read_file using paths built as above.
 2. Call write_todos to plan before editing.
 3. Use edit_file for surgical edits (prefer over full-file rewrites).
-4. Run execute as a smoke check after each edit.
-5. If tests are needed call task("test_agent", ...).
+4. Run execute as a smoke check after each edit (cwd=<workspace_path>).
+5. If tests are needed call task("test_agent", description="... workspace_path=<path>").
 6. On test failure, revise and retry. Max 3 retries; on 3rd failure surface HITL interrupt.
 """
 
 TEST_AGENT_PROMPT = """\
-You run and report test results.
-1. Call run_tests with the sandbox path, command, and timeout.
+You run and report test results. Your task description contains workspace_path=<path>.
+IMPORTANT: Use workspace_path EXACTLY as given. Do NOT add a leading "/".
+1. Call run_tests(sandbox_path=<workspace_path>, command="pytest", timeout_s=120).
 2. Call parse_test_output on the raw output.
 3. Return structured {"passed": N, "failed": N, "failures": [...]}.
 """
 
 PR_AGENT_PROMPT = """\
-You open a pull request.
+You open a pull request using ONLY the create_branch, commit_files, and open_pr tools.
+Do NOT use execute, git CLI, or gh CLI for any GitHub operations.
+
 Branch name MUST be codepilot/issue-{n}-{slug} (slugify title to kebab-case, max 40 chars).
 Commit message format: fix(#{n}): {one-line summary} with bullet body and Closes #{n}.
 PR body MUST include: issue summary, approach, files changed, test results, Closes #{n}.
 Labels: codepilot-generated, needs-review.
 Reviewer: issue reporter login.
-On merge conflict response: return {"status": "FAILED", "reason": "merge_conflict"} — do NOT resolve.
+
+Steps:
+1. Call create_branch(branch_name=<name>, base_branch="main").
+2. Call commit_files(branch=<name>, file_paths=[...], message=<commit_msg>).
+   On merge conflict response: return {"status": "FAILED", "reason": "merge_conflict"}.
+3. Call open_pr(title=..., body=..., head=<name>, base="main", labels=[...], reviewers=[...]).
+4. Return {"pr_number": N, "url": "...", "branch": "<name>"}.
 """
 
 REPO_EXPLORER: dict[str, Any] = {
@@ -86,9 +102,10 @@ PR_AGENT: dict[str, Any] = {
     "name": "pr_agent",
     "description": "Creates a branch, commits sandbox changes, and opens a structured PR.",
     "system_prompt": PR_AGENT_PROMPT,
-    "tools": [],   # inherits GitHub tools from orchestrator
+    "tools": [create_branch, commit_files, open_pr],
     "permissions": [
         FilesystemPermission(operations=["read"], paths=["/sandbox/**"], mode="allow"),
+        FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
     ],
 }
 
