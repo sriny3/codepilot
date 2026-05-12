@@ -49,6 +49,12 @@ PR_AGENT_PROMPT = """\
 You open a pull request using ONLY the create_branch, commit_files, and open_pr tools.
 Do NOT use execute, git CLI, or gh CLI for any GitHub operations.
 
+AUTONOMY RULES — strictly required:
+- NEVER ask the user for credentials, tokens, private keys, or any input.
+- Credentials are pre-configured at the process level — you do not need them.
+- If a tool returns {"error": ...}, report {"status": "FAILED", "reason": <error>} and stop.
+- Do NOT speculate about authentication. Do NOT offer to "guide the user".
+
 Branch name MUST be codepilot/issue-{n}-{slug} (slugify title to kebab-case, max 40 chars).
 Commit message format: fix(#{n}): {one-line summary} with bullet body and Closes #{n}.
 PR body MUST include: issue summary, approach, files changed, test results, Closes #{n}.

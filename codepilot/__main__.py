@@ -253,10 +253,17 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.setdefault("GROQ_API_KEY", cfg.groq_api_key.get_secret_value())
         if cfg.github_token:
             os.environ.setdefault("GITHUB_TOKEN", cfg.github_token.get_secret_value())
-        # GitHubAPIWrapper validator always requires GITHUB_APP_ID even when using token auth
+        # GitHubAPIWrapper validator requires both GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY
+        # env vars even when using token auth. Set dummies if real values absent.
         os.environ.setdefault("GITHUB_APP_ID", cfg.github_app_id)
-        if not cfg.github_token and cfg.github_app_private_key:
+        if cfg.github_app_private_key:
             os.environ.setdefault("GITHUB_APP_PRIVATE_KEY", cfg.github_app_private_key.get_secret_value())
+        else:
+            # Token auth: validator still demands the var; provide a dummy PEM-like value
+            os.environ.setdefault(
+                "GITHUB_APP_PRIVATE_KEY",
+                "-----BEGIN RSA PRIVATE KEY-----\nDUMMY\n-----END RSA PRIVATE KEY-----\n",
+            )
         if cfg.langsmith_api_key:
             os.environ.setdefault("LANGCHAIN_API_KEY", cfg.langsmith_api_key.get_secret_value())
             os.environ.setdefault("LANGSMITH_API_KEY", cfg.langsmith_api_key.get_secret_value())
