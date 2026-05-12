@@ -91,6 +91,27 @@ def _get_wrapper() -> GitHubAPIWrapper:
     )
 
 
+def _get_repo():
+    """Direct PyGithub access — bypasses GitHubAPIWrapper which has parsing bugs."""
+    from codepilot.config.settings import get_settings
+    from github import Github
+
+    cfg = get_settings()
+    if cfg.github_token:
+        gh = Github(cfg.github_token.get_secret_value())
+    else:
+        from github import Auth, GithubIntegration
+        auth = Auth.AppAuth(int(cfg.github_app_id), cfg.github_app_private_key.get_secret_value())
+        integration = GithubIntegration(auth=auth)
+        # Use first installation's token
+        installations = integration.get_installations()
+        if installations.totalCount == 0:
+            raise RuntimeError("GitHub App has no installations")
+        installation = installations[0]
+        gh = installation.get_github_for_installation()
+    return gh.get_repo(cfg.repo_full_name)
+
+
 @tool
 def list_open_issues(labels: list[str], exclude_ids: list[int]) -> list[dict]:
     """List open GitHub issues. Pass empty `labels=[]` to return all issues. Pass `exclude_ids` to skip issues being processed."""
@@ -134,12 +155,11 @@ def get_issue(issue_number: int) -> dict:
 @tool
 def create_branch(branch_name: str, base_branch: str) -> dict | str:
     """Create a new git branch from `base_branch` (e.g. "main"). If base_branch is missing, falls back to repo default. Returns the new branch name on success, or {"error": ...} on failure."""
+    import traceback
     _trace("create_branch", branch_name=branch_name, base_branch=base_branch)
     result: Any
     try:
-        wrapper = _get_wrapper()
-        repo = wrapper.github_repo_instance
-        # Auto-detect default branch if requested base doesn't exist
+        repo = _get_repo()
         try:
             base = repo.get_branch(base_branch)
         except Exception:
@@ -149,7 +169,6 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
             base = repo.get_branch(default)
             base_branch = default
         base_sha = base.commit.sha
-        # If branch already exists, return success (idempotent)
         try:
             existing = repo.get_branch(branch_name)
             if existing is not None:
@@ -161,6 +180,13 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
         repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_sha)
         result = {"branch_name": branch_name, "base_branch": base_branch, "base_sha": base_sha}
     except Exception as exc:
+        tb = traceback.format_exc()
+        # Write full traceback to trace file for diagnosis
+        try:
+            with _TRACE_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(f"--- create_branch traceback ---\n{tb}\n--- end ---\n")
+        except Exception:
+            pass
         result = {"error": f"{type(exc).__name__}: {exc}", "branch_name": branch_name, "base_branch": base_branch}
     _trace_result("create_branch", result)
     return result
@@ -178,18 +204,39 @@ def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str
         result: Any = {"error": err}
         _trace_result("commit_files", result)
         return result
+    import traceback
     try:
-        wrapper = _get_wrapper()
+        repo = _get_repo()
         committed = []
         for path in file_paths:
             try:
                 content = Path(path).read_text(encoding="utf-8")
             except FileNotFoundError:
                 content = ""
-            wrapper.create_file(path, message, content, branch=branch)
-            committed.append(path)
-        result = f"Committed {len(committed)} file(s) to {branch}"
+            # Path inside repo is the relative file_path. If user passed an absolute
+            # workspace path, strip it so the GitHub path is repo-relative.
+            repo_path = path
+            for prefix in (".codepilot/workspace/",):
+                idx = path.find(prefix)
+                if idx >= 0:
+                    after = path[idx + len(prefix):]
+                    parts = after.split("/", 1)
+                    repo_path = parts[1] if len(parts) > 1 else after
+                    break
+            # Update if file exists, else create
+            try:
+                existing = repo.get_contents(repo_path, ref=branch)
+                repo.update_file(repo_path, message, content, existing.sha, branch=branch)
+            except Exception:
+                repo.create_file(repo_path, message, content, branch=branch)
+            committed.append(repo_path)
+        result = f"Committed {len(committed)} file(s) to {branch}: {committed}"
     except Exception as exc:
+        try:
+            with _TRACE_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(f"--- commit_files traceback ---\n{traceback.format_exc()}\n--- end ---\n")
+        except Exception:
+            pass
         msg = str(exc).lower()
         if "merge conflict" in msg or "409" in msg or "422" in msg:
             result = {"error": "merge_conflict", "message": str(exc)}
@@ -215,21 +262,32 @@ def open_pr(
         {"title": title[:80], "head": head, "base": base},
     )
     if err:
-        return {"error": err}
-    wrapper = _get_wrapper()
-    pr = wrapper.create_pull(title=title, body=body, head=head, base=base)
-    pr_number = getattr(pr, "number", 0)
-    pr_url = getattr(pr, "html_url", "")
-
-    # Apply labels and reviewers via PyGithub if provided
-    if labels or reviewers:
+        result: Any = {"error": err}
+        _trace_result("open_pr", result)
+        return result
+    import traceback
+    try:
+        repo = _get_repo()
+        pr = repo.create_pull(title=title, body=body, head=head, base=base)
+        pr_number = pr.number
+        pr_url = pr.html_url
+        if labels:
+            try:
+                pr.add_to_labels(*labels)
+            except Exception:
+                pass
+        if reviewers:
+            try:
+                pr.create_review_request(reviewers=reviewers)
+            except Exception:
+                pass
+        result = {"pr_number": pr_number, "url": pr_url}
+    except Exception as exc:
         try:
-            gh_pr = wrapper.github_repo_instance.get_pull(pr_number)
-            if labels:
-                gh_pr.add_to_labels(*labels)
-            if reviewers:
-                gh_pr.create_review_request(reviewers=reviewers)
+            with _TRACE_PATH.open("a", encoding="utf-8") as fh:
+                fh.write(f"--- open_pr traceback ---\n{traceback.format_exc()}\n--- end ---\n")
         except Exception:
-            pass  # labels/reviewers are best-effort; don't fail the PR creation
-
-    return {"pr_number": pr_number, "url": pr_url}
+            pass
+        result = {"error": f"{type(exc).__name__}: {exc}"}
+    _trace_result("open_pr", result)
+    return result
