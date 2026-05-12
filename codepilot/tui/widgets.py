@@ -172,9 +172,20 @@ class ApprovalPanel(Vertical):
         self.query_one("#approval-title", Static).update(
             RichText(f"⚠ APPROVAL REQUIRED — {operation}", style="#5cb85c")
         )
-        desc = details.get("value", operation)
+        # Render all dict fields as key: value lines, plus optional 'value' summary on top.
+        lines: list[str] = []
+        summary = details.get("value")
+        if summary:
+            lines.append(str(summary))
+        for k, v in details.items():
+            if k == "value":
+                continue
+            lines.append(f"  {k}: {v}")
+        if not lines:
+            lines.append(operation)
+        body = "\n".join(lines)
         self.query_one("#approval-description", Static).update(
-            f"{desc}\n[A] Approve   [R] Reject"
+            f"{body}\n\n[A] Approve   [R] Reject"
         )
 
     def hide(self) -> None:

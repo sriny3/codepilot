@@ -198,7 +198,13 @@ def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str
     _trace("commit_files", branch=branch, files=len(file_paths), message=message[:60])
     err = _require_approval(
         "commit_files",
-        {"branch": branch, "files": len(file_paths), "message": message[:80]},
+        {
+            "value": f"Commit {len(file_paths)} file(s) to branch '{branch}'",
+            "branch": branch,
+            "files": len(file_paths),
+            "message": message[:120],
+            "paths": ", ".join(p.rsplit("/", 1)[-1] for p in file_paths[:6]),
+        },
     )
     if err:
         result: Any = {"error": err}
@@ -257,9 +263,23 @@ def open_pr(
 ) -> dict:
     """Open a GitHub pull request. Applies labels and reviewer requests (best-effort). Returns pr_number and url."""
     _trace("open_pr", title=title[:60], head=head, base=base)
+    # Build PR compare URL for visibility (repo full name comes from settings)
+    compare_url = ""
+    try:
+        from codepilot.config.settings import get_settings
+        compare_url = f"https://github.com/{get_settings().repo_full_name}/compare/{base}...{head}"
+    except Exception:
+        pass
     err = _require_approval(
         "open_pr",
-        {"title": title[:80], "head": head, "base": base},
+        {
+            "value": f"Open PR: {title[:120]}",
+            "head": head,
+            "base": base,
+            "labels": ", ".join(labels) if labels else "(none)",
+            "reviewers": ", ".join(reviewers) if reviewers else "(none)",
+            "compare": compare_url,
+        },
     )
     if err:
         result: Any = {"error": err}
