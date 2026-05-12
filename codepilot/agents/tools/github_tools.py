@@ -18,13 +18,30 @@ _hitl_gate: "HITLCoordinator | None" = None
 def set_hitl_gate(gate: "HITLCoordinator | None") -> None:
     global _hitl_gate
     _hitl_gate = gate
+    import sys
+    print(f"[HITL-GATE] set_hitl_gate called, gate={gate is not None}", file=sys.stderr, flush=True)
 
 
 def _require_approval(operation: str, details: dict[str, Any]) -> str | None:
     """Call HITL gate. Returns error string if rejected, None if approved (or no gate)."""
+    from codepilot.observability.logger import get_logger
+    import sys
+    _log = get_logger("hitl.gate")
+    gate_set = _hitl_gate is not None
+    _log.info("hitl.gate_check", operation=operation, gate_set=gate_set)
+    print(f"[HITL-GATE] {operation} called, gate_set={gate_set}", file=sys.stderr, flush=True)
     if _hitl_gate is None:
+        _log.warning("hitl.gate_unset", operation=operation)
         return None
+    try:
+        # Notify TUI log immediately (separate from blocking approval call)
+        app = getattr(_hitl_gate, "_app", None)
+        if app is not None and hasattr(app, "post_append_log"):
+            app.post_append_log(f"[HITL] gate firing for {operation}")
+    except Exception:
+        pass
     approved = _hitl_gate.request_approval(operation, details)
+    _log.info("hitl.gate_decision", operation=operation, approved=approved)
     if not approved:
         return f"rejected: user rejected {operation}"
     return None
