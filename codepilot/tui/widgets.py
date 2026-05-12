@@ -4,7 +4,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.color import Color
 from textual.containers import Vertical
-from textual.widgets import DataTable, Input, Label, Static
+from textual.widgets import DataTable, Input, Static
 from textual.widgets._data_table import CellDoesNotExist
 from rich.text import Text as RichText
 
