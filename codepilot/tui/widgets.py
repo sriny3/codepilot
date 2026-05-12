@@ -3,8 +3,50 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import DataTable, Input, ListView, Static
+from textual.widgets import DataTable, Input, Label, ListItem, ListView, Static
 from textual.widgets._data_table import CellDoesNotExist
+
+_STATE_ICON: dict[str, str] = {
+    "TRIAGED": "●",
+    "EXPLORING": "◌",
+    "IMPLEMENTING": "◉",
+    "TESTING": "◎",
+    "PR_OPENED": "◈",
+    "DONE": "✓",
+    "FAILED": "✗",
+}
+
+_STATE_AGENT: dict[str, str] = {
+    "TRIAGED": "Orchestrator",
+    "EXPLORING": "RepoExplorer",
+    "IMPLEMENTING": "Coder",
+    "TESTING": "TestAgent",
+    "PR_OPENED": "PRAgent",
+    "DONE": "Orchestrator",
+    "FAILED": "Orchestrator",
+}
+
+_STATE_COLOR: dict[str, str] = {
+    "TRIAGED": "#5c6370",
+    "EXPLORING": "#4a9eff",
+    "IMPLEMENTING": "#e5c07b",
+    "TESTING": "#c678dd",
+    "PR_OPENED": "#56b6c2",
+    "DONE": "#5cb85c",
+    "FAILED": "#e06c75",
+}
+
+
+def _log_color(message: str) -> str:
+    """Pick a display color for a log line based on keywords."""
+    msg = message.lower()
+    if any(k in msg for k in ("failed", "error", "✗")):
+        return "#e06c75"
+    if any(k in msg for k in ("done", "✓", "success", "merged")):
+        return "#5cb85c"
+    if any(k in msg for k in ("working", "warn")):
+        return "#e5c07b"
+    return "#b2c2d2"
 
 
 class IssuesPanel(Vertical):
@@ -18,7 +60,7 @@ class IssuesPanel(Vertical):
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("Issues", classes="panel-title")
+        yield Static("GitHub Issues", classes="panel-title")
         yield DataTable(id="issues-table")
 
     def on_mount(self) -> None:
@@ -30,12 +72,14 @@ class IssuesPanel(Vertical):
     def upsert_issue(self, issue_id: int, title: str, state: str) -> None:
         table = self.query_one(DataTable)
         key = str(issue_id)
+        icon = _STATE_ICON.get(state, "●")
+        state_cell = f"{icon} {state.lower()}"
         try:
             table.update_cell(key, "num", f"#{issue_id}")
-            table.update_cell(key, "title", title[:38])
-            table.update_cell(key, "state", state)
+            table.update_cell(key, "title", title[:36])
+            table.update_cell(key, "state", state_cell)
         except CellDoesNotExist:
-            table.add_row(f"#{issue_id}", title[:38], state, key=key)
+            table.add_row(f"#{issue_id}", title[:36], state_cell, key=key)
 
 
 class ActiveTaskPanel(Vertical):
@@ -50,26 +94,33 @@ class ActiveTaskPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("Active Task", id="task-title")
-        yield Static("", id="task-meta")
+        yield Static("", id="task-agent")
+        yield Static("", id="task-skill")
         yield ListView(id="task-todos")
 
     def update_task(
         self,
         issue_id: int,
+        title: str,
         state: str,
         skill: str,
         retry: int,
         todos: list[str],
     ) -> None:
-        self.query_one("#task-title", Static).update(f"Issue #{issue_id}")
-        self.query_one("#task-meta", Static).update(
-            f"State: {state}  Skill: {skill}  Retry: {retry}"
+        agent = _STATE_AGENT.get(state, "Orchestrator")
+        self.query_one("#task-title", Static).update(
+            f"Issue #{issue_id}: {title}" if title else f"Issue #{issue_id}"
+        )
+        self.query_one("#task-agent", Static).update(
+            f"Status: {state}  Agent: {agent} (retry {retry}/3)"
+        )
+        self.query_one("#task-skill", Static).update(
+            f"Skill: {skill}" if skill else ""
         )
         todo_list = self.query_one("#task-todos", ListView)
         todo_list.clear()
         for todo in todos:
-            from textual.widgets import ListItem, Label
-            todo_list.append(ListItem(Label(todo)))
+            todo_list.append(ListItem(Label(f"[ ] {todo}")))
 
 
 class ApprovalPanel(Vertical):
@@ -89,11 +140,11 @@ class ApprovalPanel(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("Awaiting Approval", id="approval-title")
         yield Static("", id="approval-description")
-        yield Input(placeholder="[a]pprove / [r]eject / [i]nspect", id="approval-input")
+        yield Input(placeholder="approve / reject / inspect", id="approval-input")
 
     def show_operation(self, operation: str, details: dict) -> None:
         self.add_class("--visible")
-        self.query_one("#approval-title", Static).update(f"HITL: {operation}")
+        self.query_one("#approval-title", Static).update(f"⚠ {operation}")
         detail_str = "\n".join(f"  {k}: {v}" for k, v in details.items())
         self.query_one("#approval-description", Static).update(detail_str)
 
