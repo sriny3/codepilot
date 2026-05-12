@@ -88,6 +88,10 @@ class CodePilotApp(App[None]):
         self._on_ready: "(() -> None) | None" = None
         self._task_queue: asyncio.Queue[str] = asyncio.Queue()
         self._pipeline_log: "io.TextIOWrapper | None" = None
+        # Index in RichLog.lines where the current pending heartbeat starts.
+        # Set by _set_log_heartbeat, cleared when a permanent line is appended
+        # or when the heartbeat is explicitly cleared.
+        self._heartbeat_start_idx: int | None = None
         if log_dir is not None:
             log_path = Path(log_dir)
             log_path.mkdir(parents=True, exist_ok=True)
@@ -119,11 +123,37 @@ class CodePilotApp(App[None]):
     # ── Panel update helpers (thread-safe via call_from_thread) ──────────────
 
     def append_log(self, message: str, raw: str | None = None) -> None:
+        log = self.query_one("#event-log", RichLog)
+        # Permanent line — discard any pending heartbeat first so it doesn't
+        # remain frozen above newer real activity.
+        self._trim_pending_heartbeat(log)
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
         colored = RichText(f"{ts} {message}", style=_log_color(message))
-        self.query_one("#event-log", RichLog).write(colored)
+        log.write(colored)
         if self._pipeline_log is not None:
             self._pipeline_log.write(f"{ts} {raw if raw is not None else message}\n")
+
+    def _trim_pending_heartbeat(self, log: RichLog) -> None:
+        """Remove the current pending heartbeat strips from the log, if any."""
+        if self._heartbeat_start_idx is None:
+            return
+        if self._heartbeat_start_idx <= len(log.lines):
+            del log.lines[self._heartbeat_start_idx:]
+            from textual.geometry import Size
+            log.virtual_size = Size(log.virtual_size.width, len(log.lines))
+            log.refresh()
+        self._heartbeat_start_idx = None
+
+    def _set_log_heartbeat(self, text: str) -> None:
+        """Render the heartbeat as the last line of the log, replacing any prior heartbeat."""
+        log = self.query_one("#event-log", RichLog)
+        self._trim_pending_heartbeat(log)
+        if not text:
+            return
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        colored = RichText(f"{ts} {text}", style=_log_color(text))
+        self._heartbeat_start_idx = len(log.lines)
+        log.write(colored)
 
     def _safe_call(self, fn: Any, *args: Any) -> None:
         """call_from_thread that silently no-ops if app has already exited."""
@@ -171,6 +201,7 @@ class CodePilotApp(App[None]):
 
     def update_heartbeat(self, text: str) -> None:
         self.query_one(ActiveTaskPanel).update_heartbeat(text)
+        self._set_log_heartbeat(text)
 
     def post_heartbeat(self, text: str) -> None:
         self._safe_call(self.update_heartbeat, text)
