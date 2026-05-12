@@ -1,6 +1,7 @@
 """GitHub @tool wrappers for the DeepAgents orchestrator."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,11 @@ from langchain_core.tools import tool
 if TYPE_CHECKING:
     from codepilot.tui.hitl import HITLCoordinator
 
+
+def _trace(name: str, **kw: Any) -> None:
+    summary = ", ".join(f"{k}={str(v)[:40]!r}" for k, v in kw.items())
+    print(f"[TOOL-CALL] {name}({summary})", file=sys.stderr, flush=True)
+
 # Module-level HITL gate. Set once from __main__.py before orchestrator creation.
 # Tools call this gate before executing destructive GitHub operations.
 _hitl_gate: "HITLCoordinator | None" = None
@@ -18,14 +24,12 @@ _hitl_gate: "HITLCoordinator | None" = None
 def set_hitl_gate(gate: "HITLCoordinator | None") -> None:
     global _hitl_gate
     _hitl_gate = gate
-    import sys
     print(f"[HITL-GATE] set_hitl_gate called, gate={gate is not None}", file=sys.stderr, flush=True)
 
 
 def _require_approval(operation: str, details: dict[str, Any]) -> str | None:
     """Call HITL gate. Returns error string if rejected, None if approved (or no gate)."""
     from codepilot.observability.logger import get_logger
-    import sys
     _log = get_logger("hitl.gate")
     gate_set = _hitl_gate is not None
     _log.info("hitl.gate_check", operation=operation, gate_set=gate_set)
@@ -66,6 +70,7 @@ def _get_wrapper() -> GitHubAPIWrapper:
 @tool
 def list_open_issues(labels: list[str], exclude_ids: list[int]) -> list[dict]:
     """List open GitHub issues. Pass empty `labels=[]` to return all issues. Pass `exclude_ids` to skip issues being processed."""
+    _trace("list_open_issues", labels=labels)
     wrapper = _get_wrapper()
     raw = wrapper.get_issues()
     issues = []
@@ -87,6 +92,7 @@ def list_open_issues(labels: list[str], exclude_ids: list[int]) -> list[dict]:
 @tool
 def get_issue(issue_number: int) -> dict:
     """Get a single GitHub issue by number. Returns error dict on failure."""
+    _trace("get_issue", issue_number=issue_number)
     try:
         wrapper = _get_wrapper()
         # Use the PyGithub repo instance directly — GitHubAPIWrapper.get_issue() has
@@ -104,6 +110,7 @@ def get_issue(issue_number: int) -> dict:
 @tool
 def create_branch(branch_name: str, base_branch: str) -> dict | str:
     """Create a new git branch from `base_branch` (e.g. "main"). If base_branch is missing, falls back to repo default. Returns the new branch name on success, or {"error": ...} on failure."""
+    _trace("create_branch", branch_name=branch_name, base_branch=base_branch)
     try:
         wrapper = _get_wrapper()
         repo = wrapper.github_repo_instance
@@ -133,6 +140,7 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
 @tool
 def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str:
     """Commit local file contents to a GitHub branch. Reads each file from disk. Returns error dict on merge conflict, string confirmation on success."""
+    _trace("commit_files", branch=branch, files=len(file_paths), message=message[:60])
     err = _require_approval(
         "commit_files",
         {"branch": branch, "files": len(file_paths), "message": message[:80]},
@@ -167,6 +175,7 @@ def open_pr(
     reviewers: list[str],
 ) -> dict:
     """Open a GitHub pull request. Applies labels and reviewer requests (best-effort). Returns pr_number and url."""
+    _trace("open_pr", title=title[:60], head=head, base=base)
     err = _require_approval(
         "open_pr",
         {"title": title[:80], "head": head, "base": base},
