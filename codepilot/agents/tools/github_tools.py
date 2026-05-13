@@ -136,17 +136,17 @@ def list_open_issues(labels: list[str], exclude_ids: list[int]) -> list[dict]:
 
 @tool
 def get_issue(issue_number: int) -> dict:
-    """Get a single GitHub issue by number. Returns error dict on failure."""
+    """Get a single GitHub issue by number. Returns number, title, body, reporter, url. Error dict on failure."""
     _trace("get_issue", issue_number=issue_number)
     try:
-        wrapper = _get_wrapper()
-        # Use the PyGithub repo instance directly — GitHubAPIWrapper.get_issue() has
-        # inconsistent return type across LangChain versions (str vs dict vs object).
-        issue = wrapper.github_repo_instance.get_issue(number=issue_number)
+        repo = _get_repo()
+        issue = repo.get_issue(number=issue_number)
         return {
             "number": issue.number,
             "title": issue.title,
             "body": issue.body or "",
+            "reporter": issue.user.login if issue.user else "",
+            "url": issue.html_url,
         }
     except Exception as exc:
         return {"error": str(exc), "number": issue_number}
@@ -196,16 +196,19 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
 def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str:
     """Commit local file contents to a GitHub branch. Reads each file from disk. Returns error dict on merge conflict, string confirmation on success."""
     _trace("commit_files", branch=branch, files=len(file_paths), message=message[:60])
-    err = _require_approval(
-        "commit_files",
-        {
-            "value": f"Commit {len(file_paths)} file(s) to branch '{branch}'",
-            "branch": branch,
-            "files": len(file_paths),
-            "message": message[:120],
-            "paths": ", ".join(p.rsplit("/", 1)[-1] for p in file_paths[:6]),
-        },
-    )
+    # HITL gate per spec: only require approval if commit touches more than 5 files
+    err: str | None = None
+    if len(file_paths) > 5:
+        err = _require_approval(
+            "commit_files",
+            {
+                "value": f"Commit {len(file_paths)} file(s) to branch '{branch}' (>5 file threshold)",
+                "branch": branch,
+                "files": len(file_paths),
+                "message": message[:120],
+                "paths": ", ".join(p.rsplit("/", 1)[-1] for p in file_paths[:8]),
+            },
+        )
     if err:
         result: Any = {"error": err}
         _trace_result("commit_files", result)
@@ -263,24 +266,26 @@ def open_pr(
 ) -> dict:
     """Open a GitHub pull request. Applies labels and reviewer requests (best-effort). Returns pr_number and url."""
     _trace("open_pr", title=title[:60], head=head, base=base)
-    # Build PR compare URL for visibility (repo full name comes from settings)
-    compare_url = ""
-    try:
-        from codepilot.config.settings import get_settings
-        compare_url = f"https://github.com/{get_settings().repo_full_name}/compare/{base}...{head}"
-    except Exception:
-        pass
-    err = _require_approval(
-        "open_pr",
-        {
-            "value": f"Open PR: {title[:120]}",
-            "head": head,
-            "base": base,
-            "labels": ", ".join(labels) if labels else "(none)",
-            "reviewers": ", ".join(reviewers) if reviewers else "(none)",
-            "compare": compare_url,
-        },
-    )
+    # HITL gate per spec: only require approval if PR target is main or master
+    err: str | None = None
+    if base in ("main", "master"):
+        compare_url = ""
+        try:
+            from codepilot.config.settings import get_settings
+            compare_url = f"https://github.com/{get_settings().repo_full_name}/compare/{base}...{head}"
+        except Exception:
+            pass
+        err = _require_approval(
+            "open_pr",
+            {
+                "value": f"Open PR to '{base}': {title[:120]}",
+                "head": head,
+                "base": base,
+                "labels": ", ".join(labels) if labels else "(none)",
+                "reviewers": ", ".join(reviewers) if reviewers else "(none)",
+                "compare": compare_url,
+            },
+        )
     if err:
         result: Any = {"error": err}
         _trace_result("open_pr", result)

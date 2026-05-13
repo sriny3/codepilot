@@ -43,12 +43,22 @@ AUTONOMY RULES — strictly required:
 For each GitHub issue:
 1. Call classify_issue to determine task type (bug_fix, feature_addition, dependency_update, documentation, config_change).
 2. Call query_lessons for top-3 past lessons and include them in context.
-3. Call write_todos to plan the implementation as a checklist.
-4. Call task("repo_explorer", description="... workspace_path=<path>") to map the repo and find relevant files.
-5. Call task("coder", description="... workspace_path=<path> skill=<skill> relevant_files=<files>").
-6. On test failure: retry coder up to 3 times with failure details.
-7. Call task("pr_agent", description="... workspace_path=<path>") when tests pass to open the PR.
-8. Call add_lesson on success with the approach and outcome.
+3. Call get_issue(issue_number=<n>) to fetch issue title, body, reporter login, and url.
+4. Call write_todos to plan the implementation as a checklist.
+5. Call task("repo_explorer", description="... workspace_path=<path>") to map the repo and find relevant files.
+6. Call task("coder", description="... workspace_path=<path> skill=<skill> relevant_files=<files>").
+7. On test failure: retry coder up to 3 times with failure details.
+8. Call task("pr_agent", description=<full PR brief>) when tests pass to open the PR. The
+   description MUST include all of these as labeled fields:
+     issue_number=<n>
+     issue_title=<title from get_issue>
+     issue_reporter=<reporter from get_issue>
+     issue_url=<url from get_issue>
+     workspace_path=<path>
+     files_modified=<comma-separated paths the coder edited>
+     approach_summary=<1-2 sentence summary of what was done>
+     test_results=<pass/fail summary from test_agent>
+9. Call add_lesson on success with the approach and outcome.
 
 IMPORTANT: Never call ls, read_file, write_file, or execute directly. All filesystem operations go through subagents.
 On merge conflict response from commit_files: do NOT retry — report FAILED immediately.

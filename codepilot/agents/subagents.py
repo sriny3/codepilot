@@ -59,17 +59,49 @@ AUTONOMY RULES — strictly required:
 - Do NOT invent reasons for tool failures. Report the exact tool error and stop.
 - Do NOT offer to "guide the user" through anything.
 
-Branch name MUST be codepilot/issue-{n}-{slug} (slugify title to kebab-case, max 40 chars).
-Commit message format: fix(#{n}): {one-line summary} with bullet body and Closes #{n}.
-PR body MUST include: issue summary, approach, files changed, test results, Closes #{n}.
-Labels: codepilot-generated, needs-review.
-Reviewer: issue reporter login.
+Your task description provides: issue_number, issue_title, issue_reporter, issue_url,
+files_modified, approach_summary, test_results, workspace_path.
+
+Branch name (REQUIRED format): codepilot/issue-{issue_number}-{slug}
+  - slug = kebab-case of issue_title, max 40 chars total branch path
+  - Example: "codepilot/issue-1-add-health-endpoint"
+
+Commit message (REQUIRED format):
+  fix(#{issue_number}): {one-line summary}
+
+  - {bullet: what changed}
+  - {bullet: why}
+  - Closes #{issue_number}
+
+PR title (REQUIRED format): "[CodePilot] {issue_title}"
+
+PR body MUST include these sections:
+  ## Summary
+  {issue summary in 1-2 sentences}
+
+  ## Approach
+  {how you solved it}
+
+  ## Files changed
+  - {file1}
+  - {file2}
+
+  ## Test results
+  {test pass/fail summary}
+
+  Closes #{issue_number}
+  Issue: {issue_url}
+
+Labels (REQUIRED): ["codepilot-generated", "needs-review"]
+Reviewers: [issue_reporter] (omit if reporter is empty or matches the bot's own login)
 
 Steps:
 1. Call create_branch(branch_name=<name>, base_branch="main").
+   If main does not exist, the tool auto-falls-back to the repo default branch.
 2. Call commit_files(branch=<name>, file_paths=[...], message=<commit_msg>).
-   On merge conflict response: return {"status": "FAILED", "reason": "merge_conflict"}.
-3. Call open_pr(title=..., body=..., head=<name>, base="main", labels=[...], reviewers=[...]).
+   On merge conflict response: return {"status": "FAILED", "reason": "merge_conflict"} — do NOT try to resolve.
+3. Call open_pr(title="[CodePilot] {issue_title}", body=<full body>, head=<name>,
+   base="main", labels=["codepilot-generated", "needs-review"], reviewers=[<reporter>]).
 4. Return {"pr_number": N, "url": "...", "branch": "<name>"}.
 """
 
