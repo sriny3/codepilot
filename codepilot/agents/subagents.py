@@ -12,6 +12,7 @@ from codepilot.agents.tools.repo_tools import (
     retrieve_relevant_files,
 )
 from codepilot.agents.tools.github_tools import commit_files, create_branch, open_pr
+from codepilot.agents.tools.hitl_tools import request_retry_approval
 from codepilot.agents.tools.test_tools import parse_test_output, run_tests
 
 REPO_EXPLORER_PROMPT = """\
@@ -29,12 +30,22 @@ CODER_PROMPT = """\
 You implement code changes. Your task description contains workspace_path=<path>.
 IMPORTANT: Use workspace_path EXACTLY as given (e.g. ".codepilot/workspace/financebot"). Do NOT add a leading "/".
 Build file paths as: <workspace_path>/<relative_file_path> (e.g. ".codepilot/workspace/financebot/README.md").
+
 1. Read relevant files with read_file using paths built as above.
 2. Call write_todos to plan before editing.
 3. Use edit_file for surgical edits (prefer over full-file rewrites).
 4. Run execute as a smoke check after each edit (cwd=<workspace_path>).
 5. If tests are needed call task("test_agent", description="... workspace_path=<path>").
-6. On test failure, revise and retry. Max 3 retries; on 3rd failure surface HITL interrupt.
+
+RETRY POLICY (REQUIRED):
+- Track consecutive test failures. After two failures, you MUST call
+  request_retry_approval(failure_count=<n>, reason=<short failure summary>)
+  BEFORE attempting any further retry.
+- If the tool returns {"approved": True}, proceed with one more retry.
+- If it returns {"approved": False, ...}, stop and return
+  {"status": "FAILED", "reason": "human_rejected_retry"}.
+- Hard cap: 3 total attempts even with approval. After the 3rd failure,
+  return {"status": "FAILED", "reason": "max_retries_exceeded"}.
 """
 
 TEST_AGENT_PROMPT = """\
@@ -121,7 +132,7 @@ CODER: dict[str, Any] = {
     "description": "Implements code changes in the sandbox given relevant files and a skill.",
     "system_prompt": CODER_PROMPT,
     "skills": ["/skills/definitions/"],
-    "tools": [run_tests],
+    "tools": [run_tests, request_retry_approval],
     "permissions": [
         FilesystemPermission(operations=["write"], paths=["/sandbox/**"], mode="allow"),
         FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),

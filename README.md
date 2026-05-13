@@ -206,7 +206,7 @@ Following the assignment specification, HITL approval is required only for irrev
 | `open_pr` | PR target branch is `main` or `master` |
 | `commit_files` | Commit touches more than 5 files |
 | `execute` containing `git push` | Always (blocked by shell guardrail; not approvable) |
-| Coder retry | After two consecutive failed test runs |
+| `request_retry_approval` | Coder must call before any retry beyond the second consecutive failure |
 
 Approval is gated at the **tool level** (in `codepilot/agents/tools/github_tools.py`), not via DeepAgents `interrupt_on`. This is deliberate: subagent interrupts do not propagate through the `task` tool boundary in DeepAgents, so a per-tool gate is the only reliable mechanism. The gate blocks the orchestrator thread on a `threading.Event` while the TUI thread renders the approval panel.
 
@@ -289,7 +289,6 @@ The orchestrator clones the target repo to `.codepilot/workspace/<repo_name>/` a
 - **No auto-merge.** PR Agent opens the PR for human review — merging is intentionally left to the human, per the assignment spec.
 - **Subagent interrupts don't bubble.** The DeepAgents `task` tool runs subagents synchronously; LangGraph `interrupt()` calls inside a subagent do not surface in the parent stream. HITL is implemented at the tool level instead.
 - **TUI captures stderr.** Diagnostic prints from background threads land in `logs/tool-trace.log` rather than the visible terminal.
-- **Coder HITL gate not yet wired.** The "approve before retry > 2" rule is described in the spec and tracked in code, but the coder agent does not yet have a `request_approval` tool. Tracked as future work.
 
 ---
 
