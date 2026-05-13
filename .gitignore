@@ -25,3 +25,8 @@ logs/*.log
 .qdrant/
 .idea/
 .vscode/
+
+# personal drafts — not for the repo
+linkedin-post.md
+*linkedin*
+drafts/
