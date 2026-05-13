@@ -127,10 +127,10 @@ class CodePilotApp(App[None]):
         # Permanent line — discard any pending heartbeat first so it doesn't
         # remain frozen above newer real activity.
         self._trim_pending_heartbeat(log)
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        colored = RichText(f"{ts} {message}", style=_log_color(message))
+        colored = RichText(message, style=_log_color(message))
         log.write(colored)
         if self._pipeline_log is not None:
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
             self._pipeline_log.write(f"{ts} {raw if raw is not None else message}\n")
 
     def _trim_pending_heartbeat(self, log: RichLog) -> None:
@@ -150,8 +150,7 @@ class CodePilotApp(App[None]):
         self._trim_pending_heartbeat(log)
         if not text:
             return
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        colored = RichText(f"{ts} {text}", style=_log_color(text))
+        colored = RichText(text, style=_log_color(text))
         self._heartbeat_start_idx = len(log.lines)
         log.write(colored)
 
