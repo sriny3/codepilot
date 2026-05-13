@@ -7,6 +7,12 @@ dist/
 .venv/
 venv/
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+*credentials*
+*.private-key*
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
