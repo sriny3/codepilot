@@ -597,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
             app.run()
         finally:
             stop_bg.set()
+            hitl.shutdown()  # unblock any pending HITL wait so bg thread can exit
             # Restore terminal: disable all mouse tracking modes, show cursor,
             # exit alt-screen. Guards against Textual crash leaving terminal raw.
             sys.stdout.write(
