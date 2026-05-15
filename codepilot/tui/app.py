@@ -16,6 +16,7 @@ from rich.text import Text as RichText
 from codepilot.tui.widgets import ActiveTaskPanel, ApprovalPanel, IssuesPanel, _log_color
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from codepilot.tui.hitl import HITLCoordinator
 
 
@@ -85,7 +86,7 @@ class CodePilotApp(App[None]):
         super().__init__()
         self._max_log_lines = max_log_lines
         self._hitl: "HITLCoordinator | None" = None
-        self._on_ready: "(() -> None) | None" = None
+        self._on_ready: Callable[[], None] | None = None
         self._task_queue: asyncio.Queue[str] = asyncio.Queue()
         self._pipeline_log: "io.TextIOWrapper | None" = None
         # Index in RichLog.lines where the current pending heartbeat starts.
