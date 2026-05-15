@@ -12,7 +12,7 @@ Built on [DeepAgents](https://github.com/langchain-ai/deepagents) (LangGraph), [
 
 ### TUI in action
 
-![CodePilot TUI — pipeline processing a bug-fix issue](docs/assets/codepilot-demo.svg)
+![CodePilot TUI — pipeline processing a bug-fix issue](docs/assets/codepilot-demo.gif)
 
 *Four-panel dashboard: issues feed (top-left), active task + state machine (top-right), live activity log (middle), HITL approval gate (bottom — appears on irreversible operations).*
 
