@@ -4,7 +4,7 @@
 
 Built on [DeepAgents](https://github.com/langchain-ai/deepagents) (LangGraph), [Textual](https://textual.textualize.io/), and PyGithub.
 
-> Status: capstone reference implementation. Production-grade observability and guardrails; single-machine concurrency. Not yet hardened for multi-tenant deployment.
+> Status:  Production-grade observability and guardrails; single-machine concurrency. Not yet hardened for multi-tenant deployment.
 
 ---
 
