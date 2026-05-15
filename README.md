@@ -6,28 +6,6 @@ Built on [DeepAgents](https://github.com/langchain-ai/deepagents) (LangGraph), [
 
 > Status:  Production-grade observability and guardrails; single-machine concurrency. Not yet hardened for multi-tenant deployment.
 
----
-
-
-
-### Example generated PR
-
-**Issue:** `Fix eslint error in page.tsx (setState in effect hook)`
-
-**PR opened by CodePilot:** [codepilot/issue-5-fix-eslint-setstate-in-effect · financebot#12](https://github.com/sriny3/financebot/pull/12)
-
-```
-Branch:  codepilot/issue-5-fix-eslint-setstate-in-effect
-Commit:  fix: wrap setState calls inside useEffect cleanup function (#5)
-Labels:  codepilot-generated, needs-review
-Trace:   a3f2c1d8-...
-```
-
-PR body contains: issue link, approach summary, test results, and `Trace-Id:` footer for full replay via `python -m codepilot.observability.trace_cli <trace_id>`.
-
----
-
-
 
 ## Table of contents
 
@@ -109,6 +87,23 @@ Cross-cutting: structlog JSON logs · OpenTelemetry spans · Append-only audit l
 ```
 
 State machine: `TRIAGED → EXPLORING → IMPLEMENTING → TESTING → PR_OPENED → DONE | FAILED`. Invalid transitions raise `InvalidTransition`; state is cleared on terminal states.
+
+---
+
+### Example generated PR
+
+**Issue:** `Fix eslint error in page.tsx (setState in effect hook)`
+
+**PR opened by CodePilot:** [codepilot/issue-5-fix-eslint-setstate-in-effect · financebot#12](https://github.com/sriny3/financebot/pull/12)
+
+```
+Branch:  codepilot/issue-5-fix-eslint-setstate-in-effect
+Commit:  fix: wrap setState calls inside useEffect cleanup function (#5)
+Labels:  codepilot-generated, needs-review
+Trace:   a3f2c1d8-...
+```
+
+PR body contains: issue link, approach summary, test results, and `Trace-Id:` footer for full replay via `python -m codepilot.observability.trace_cli <trace_id>`.
 
 ---
 
