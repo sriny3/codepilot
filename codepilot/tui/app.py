@@ -134,14 +134,15 @@ class CodePilotApp(App[None]):
             self._pipeline_log.write(f"{ts} {raw if raw is not None else message}\n")
 
     def _trim_pending_heartbeat(self, log: RichLog) -> None:
-        """Remove the current pending heartbeat strips from the log, if any."""
+        """Remove the current pending heartbeat line from the log, if any."""
         if self._heartbeat_start_idx is None:
             return
-        if self._heartbeat_start_idx <= len(log.lines):
-            del log.lines[self._heartbeat_start_idx:]
-            from textual.geometry import Size
-            log.virtual_size = Size(log.virtual_size.width, len(log.lines))
-            log.refresh()
+        try:
+            if self._heartbeat_start_idx < len(log.lines):
+                del log.lines[self._heartbeat_start_idx:]
+                log.refresh()
+        except Exception:
+            pass
         self._heartbeat_start_idx = None
 
     def _set_log_heartbeat(self, text: str) -> None:

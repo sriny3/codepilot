@@ -108,11 +108,12 @@ Reviewers: [issue_reporter] (omit if reporter is empty or matches the bot's own 
 
 Steps:
 1. Call create_branch(branch_name=<name>, base_branch="main").
-   If main does not exist, the tool auto-falls-back to the repo default branch.
+   The tool auto-falls-back to the repo default branch if "main" does not exist.
+   Capture the returned base_branch value for use in step 3.
 2. Call commit_files(branch=<name>, file_paths=[...], message=<commit_msg>).
    On merge conflict response: return {"status": "FAILED", "reason": "merge_conflict"} — do NOT try to resolve.
 3. Call open_pr(title="[CodePilot] {issue_title}", body=<full body>, head=<name>,
-   base="main", labels=["codepilot-generated", "needs-review"], reviewers=[<reporter>]).
+   base=<base_branch from step 1>, labels=["codepilot-generated", "needs-review"], reviewers=[<reporter>]).
 4. Return {"pr_number": N, "url": "...", "branch": "<name>"}.
 """
 

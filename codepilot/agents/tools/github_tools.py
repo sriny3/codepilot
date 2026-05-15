@@ -192,9 +192,20 @@ def create_branch(branch_name: str, base_branch: str) -> dict | str:
     return result
 
 
+def _repo_relative_path(path: str) -> str:
+    """Strip sandbox workspace prefix to get repo-relative path."""
+    for prefix in (".codepilot/workspace/",):
+        idx = path.find(prefix)
+        if idx >= 0:
+            after = path[idx + len(prefix):]
+            parts = after.split("/", 1)
+            return parts[1] if len(parts) > 1 else after
+    return path
+
+
 @tool
 def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str:
-    """Commit local file contents to a GitHub branch. Reads each file from disk. Returns error dict on merge conflict, string confirmation on success."""
+    """Commit local file contents to a GitHub branch as a single atomic commit using the Git Data API. Returns error dict on merge conflict, confirmation string on success."""
     _trace("commit_files", branch=branch, files=len(file_paths), message=message[:60])
     # HITL gate per spec: only require approval if commit touches more than 5 files
     err: str | None = None
@@ -215,31 +226,41 @@ def commit_files(branch: str, file_paths: list[str], message: str) -> dict | str
         return result
     import traceback
     try:
+        from github import InputGitTreeElement  # type: ignore[import]
         repo = _get_repo()
-        committed = []
+
+        # Resolve current branch tip
+        ref = repo.get_git_ref(f"heads/{branch}")
+        current_commit_sha = ref.object.sha
+        current_commit = repo.get_git_commit(current_commit_sha)
+        base_tree = current_commit.tree
+
+        # Build one blob per file
+        tree_elements = []
+        committed_paths = []
         for path in file_paths:
             try:
                 content = Path(path).read_text(encoding="utf-8")
             except FileNotFoundError:
                 content = ""
-            # Path inside repo is the relative file_path. If user passed an absolute
-            # workspace path, strip it so the GitHub path is repo-relative.
-            repo_path = path
-            for prefix in (".codepilot/workspace/",):
-                idx = path.find(prefix)
-                if idx >= 0:
-                    after = path[idx + len(prefix):]
-                    parts = after.split("/", 1)
-                    repo_path = parts[1] if len(parts) > 1 else after
-                    break
-            # Update if file exists, else create
-            try:
-                existing = repo.get_contents(repo_path, ref=branch)
-                repo.update_file(repo_path, message, content, existing.sha, branch=branch)
-            except Exception:
-                repo.create_file(repo_path, message, content, branch=branch)
-            committed.append(repo_path)
-        result = f"Committed {len(committed)} file(s) to {branch}: {committed}"
+            repo_path = _repo_relative_path(path)
+            blob = repo.create_git_blob(content, "utf-8")
+            tree_elements.append(
+                InputGitTreeElement(
+                    path=repo_path,
+                    mode="100644",
+                    type="blob",
+                    sha=blob.sha,
+                )
+            )
+            committed_paths.append(repo_path)
+
+        # Single atomic commit: tree → commit → update ref
+        new_tree = repo.create_git_tree(tree_elements, base_tree)
+        new_commit = repo.create_git_commit(message, new_tree, [current_commit])
+        ref.edit(new_commit.sha)
+
+        result = f"Committed {len(committed_paths)} file(s) to {branch} in single commit {new_commit.sha[:8]}: {committed_paths}"
     except Exception as exc:
         try:
             with _TRACE_PATH.open("a", encoding="utf-8") as fh:
@@ -266,34 +287,46 @@ def open_pr(
 ) -> dict:
     """Open a GitHub pull request. Applies labels and reviewer requests (best-effort). Returns pr_number and url."""
     _trace("open_pr", title=title[:60], head=head, base=base)
-    # HITL gate per spec: only require approval if PR target is main or master
+    import traceback
+    try:
+        repo = _get_repo()
+        # Resolve actual default branch if caller passed "main" but it doesn't exist
+        actual_base = base
+        try:
+            repo.get_branch(base)
+        except Exception:
+            actual_base = repo.default_branch
+    except Exception as exc:
+        result: Any = {"error": f"repo_init_failed: {exc}"}
+        _trace_result("open_pr", result)
+        return result
+
+    # HITL gate per spec: require approval if PR target is main, master, or repo default
     err: str | None = None
-    if base in ("main", "master"):
+    if actual_base in ("main", "master", repo.default_branch):
         compare_url = ""
         try:
             from codepilot.config.settings import get_settings
-            compare_url = f"https://github.com/{get_settings().repo_full_name}/compare/{base}...{head}"
+            compare_url = f"https://github.com/{get_settings().repo_full_name}/compare/{actual_base}...{head}"
         except Exception:
             pass
         err = _require_approval(
             "open_pr",
             {
-                "value": f"Open PR to '{base}': {title[:120]}",
+                "value": f"Open PR to '{actual_base}': {title[:120]}",
                 "head": head,
-                "base": base,
+                "base": actual_base,
                 "labels": ", ".join(labels) if labels else "(none)",
                 "reviewers": ", ".join(reviewers) if reviewers else "(none)",
                 "compare": compare_url,
             },
         )
     if err:
-        result: Any = {"error": err}
+        result = {"error": err}
         _trace_result("open_pr", result)
         return result
-    import traceback
     try:
-        repo = _get_repo()
-        pr = repo.create_pull(title=title, body=body, head=head, base=base)
+        pr = repo.create_pull(title=title, body=body, head=head, base=actual_base)
         pr_number = pr.number
         pr_url = pr.html_url
         if labels:

@@ -186,3 +186,43 @@ It never changes between runs for a given task. Passing it at construction time 
 - **Collection errors hide real failures**: A pytest collection error with `exit_code=2` triggers the `failed=1` fallback. The Orchestrator sees `failed=1` and retries the Coder. The real problem is the import error in the test file — the Coder should fix it. This works but produces one spurious retry. A future improvement: detect collection errors and surface a different error code.
 - **Timeout too generous for fast suites**: 120s default may let a hanging test run waste the orchestrator's time. The `RunConfig` should be driven from `settings.py` in Phase 10.
 - **No stderr in failures list**: Failure reasons are extracted from `FAILED` lines in stdout. Long tracebacks are not included. For the PR description, the Orchestrator may want to include the full failure block — capture it with a regex spanning multiple lines in a future enhancement.
+
+---
+
+## DeepAgents Refactor Addendum (2026-05-08)
+
+`TestAgent`, `SandboxTestRunner`, `parse_pytest_output`, and `RunConfig` are **unchanged**. The refactor added two `@tool` wrappers that the `TEST_AGENT` subagent uses.
+
+### New Files
+
+#### `codepilot/agents/tools/test_tools.py`
+
+**`_run_suite(sandbox_path, command, timeout)`** — module-level function (`LocalSandbox(Path(sandbox_path)).execute(command, timeout=timeout)`). Declared at module scope so tests can monkeypatch without mocking `LocalSandbox`.
+
+**`run_tests(sandbox_path: str, command: str, timeout: float = 120.0) → dict`** (`@tool`) — calls `_run_suite`, wraps the result as `{"passed": N, "failed": N, "failures": [...]}`. On any exception returns `{"passed": 0, "failed": -1, "failures": [{"test": "runner", "reason": str(exc)}]}` — so the LLM always gets a structured result, never a raw exception.
+
+**`parse_test_output(raw_output: str, exit_code: int = 0) → dict`** (`@tool`) — calls `parse_pytest_output(raw_output, exit_code)` and returns a dict. Module-level `_FAILED_RE = re.compile(r"\b\d+\s+failed\b", re.IGNORECASE)` handles "2 failed" without false-positives from test names containing "failed".
+
+#### New Tests: `tests/unit/test_tool_tests.py` (6 tests)
+
+- `run_tests` and `parse_test_output` are `BaseTool` instances.
+- `run_tests` returns `failed=-1` when `_run_suite` raises.
+- `parse_test_output` returns correct counts on well-formed output.
+- `parse_test_output` returns `failed=1` on non-zero exit code with empty output.
+
+### `TEST_AGENT` Subagent Spec
+
+```python
+TEST_AGENT = {
+    "name": "test_agent",
+    "description": "Runs the test suite in the sandbox and reports structured results.",
+    "system_prompt": TEST_AGENT_PROMPT,
+    "tools": [run_tests, parse_test_output],
+    "permissions": [
+        FilesystemPermission(operations=["read", "write"], paths=["/sandbox/**"], mode="allow"),
+        FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
+    ],
+}
+```
+
+`TestAgent` class is not called by the DeepAgents orchestrator. The `TEST_AGENT` subagent uses the `@tool` wrappers directly.

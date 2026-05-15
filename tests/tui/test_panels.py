@@ -14,7 +14,7 @@ async def test_all_four_panels_mount() -> None:
         assert app.query_one(IssuesPanel) is not None
         assert app.query_one(ActiveTaskPanel) is not None
         assert app.query_one(ApprovalPanel) is not None
-        log_widget = app.query("Log")
+        log_widget = app.query("RichLog")
         assert len(log_widget) > 0
 
 

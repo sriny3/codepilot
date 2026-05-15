@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None
 
     poll_interval_min: int = Field(default=5, ge=1, le=120)
     max_retries: int = Field(default=3, ge=1, le=10)
@@ -48,9 +49,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_one_llm_key(self) -> "Settings":
-        if not (self.openai_api_key or self.anthropic_api_key):
+        if not (self.openai_api_key or self.anthropic_api_key or self.groq_api_key):
             raise ValueError(
-                "at least one of OPENAI_API_KEY or ANTHROPIC_API_KEY must be set"
+                "at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY must be set"
             )
         return self
 

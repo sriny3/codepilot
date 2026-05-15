@@ -163,3 +163,43 @@ The Coder may delete a file (produces a `--- a/f` / `+++ /dev/null` entry). Thos
 - **Branch already exists**: `GitHubClient.create_branch` raises if the branch already exists (via `create_git_ref`). Retry scenarios (Orchestrator calls PRAgent twice) would fail. Add a `force=True` or check-then-delete-if-exists option in Phase 10.
 - **Commit message encoding**: `make_commit_message` uses an em dash (`—`). GitHub accepts UTF-8 commit messages, but some CI systems may not. Switch to `—` or `: fix` if issues arise.
 - **No PR body stored in WM**: `wm.notes` records only the PR number and URL. The full PR body is not stored. If the Orchestrator needs to retry with a revised body, it must regenerate it. Add `wm.pr_body: str | None` in Phase 10.
+
+---
+
+## DeepAgents Refactor Addendum (2026-05-08)
+
+`PRAgent`, `PRBuilder` functions (`make_branch_name`, `make_commit_message`, `build_pr_body`, etc.), and `GitHubClient` are **unchanged**. The refactor added five `@tool` wrappers that replace `PRAgent.run()` for the DeepAgents orchestrator.
+
+### New Files
+
+#### `codepilot/agents/tools/github_tools.py`
+
+Five `@tool` functions. Each calls `_get_wrapper()` (lazy `GitHubAPIWrapper` from settings):
+
+- **`list_open_issues(labels, exclude_ids)`** — returns list of `{number, title, body, labels}` dicts filtered by label and excluding in-progress IDs.
+- **`get_issue(issue_number)`** — returns `{number, title, body}`.
+- **`create_branch(branch_name, base_branch)`** — reads base SHA, creates `refs/heads/{branch_name}`. Returns branch name string.
+- **`commit_files(branch, file_paths, message)`** — reads each file from disk, calls `wrapper.create_file()`. Returns `{"error": "merge_conflict", ...}` on 409/422; re-raises other exceptions.
+- **`open_pr(title, body, head, base, labels, reviewers)`** — creates PR; applies labels + reviewer requests best-effort. Returns `{pr_number, url}`.
+
+Note: `commit_files` reads files **from disk** (not sandbox). The `PR_AGENT` subagent has read permission on `/sandbox/**` so it can access sandbox-relative paths. The `merge_conflict` detection covers HTTP 409 and 422 response codes.
+
+### `PR_AGENT` Subagent Spec
+
+```python
+PR_AGENT = {
+    "name": "pr_agent",
+    "description": "Creates a branch, commits sandbox changes, and opens a structured PR.",
+    "system_prompt": PR_AGENT_PROMPT,
+    "tools": [],   # inherits GitHub tools from orchestrator
+    "permissions": [
+        FilesystemPermission(operations=["read"], paths=["/sandbox/**"], mode="allow"),
+    ],
+}
+```
+
+`tools: []` — the PR agent inherits the GitHub tools that the orchestrator has registered. It does not need the repo or test tools.
+
+`PR_AGENT_PROMPT` enforces: branch name format `codepilot/issue-{n}-{slug}` (kebab-case, max 40 chars), commit message format `fix(#{n}): ...` with `Closes #{n}`, PR body must include issue summary / approach / files / test results / `Closes #{n}`, labels `codepilot-generated` + `needs-review`, reviewer = issue reporter. On merge conflict: return `{"status": "FAILED", "reason": "merge_conflict"}` — do NOT attempt to resolve.
+
+`PRAgent` class and `PRBuilder` functions remain intact with full test coverage. They are not called by the DeepAgents orchestrator but remain available for non-LangGraph usage.

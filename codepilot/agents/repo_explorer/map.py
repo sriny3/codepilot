@@ -14,6 +14,12 @@ _SKIP_DIRS: frozenset[str] = frozenset({
     ".tox", ".nox",
 })
 
+# Files that must never appear in the repo map (secrets / gitignore patterns)
+_SKIP_FILES: frozenset[str] = frozenset({
+    ".env", ".env.example", ".env.local", ".env.test", ".env.production",
+    ".gitignore", ".gitattributes", ".dockerignore",
+})
+
 _CHARS_PER_TOKEN: int = 4  # rough estimate: ~4 chars per LLM token
 
 
@@ -75,6 +81,10 @@ class RepoMap:
                 part.startswith(".") or part in _SKIP_DIRS
                 for part in rel_parts[:-1]
             ):
+                continue
+            # Skip sensitive files by exact name or extension
+            fname = rel_parts[-1]
+            if fname in _SKIP_FILES or Path(fname).suffix in {".pem", ".key", ".p12", ".pfx"}:
                 continue
 
             rel = path.relative_to(root).as_posix()

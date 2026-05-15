@@ -138,9 +138,50 @@ def _summarize_result(name: str, content: str) -> str:
         lines = [l for l in content.strip().splitlines() if l.strip()]
         return f"{len(lines)} relevant files"
     if name == "task":
-        clean = content.replace("\n", " ").strip()
-        idx = clean.find(". ")
-        return clean[:idx + 1] if 0 < idx < 120 else clean[:120]
+        # Try structured JSON result first (pr_agent, coder status returns)
+        stripped = content.strip()
+        if stripped.startswith("{"):
+            try:
+                import json as _json
+                obj = _json.loads(stripped)
+                if "pr_number" in obj:
+                    return f"PR #{obj['pr_number']} opened — {obj.get('url', '')}"
+                if "status" in obj:
+                    reason = obj.get("reason", "")
+                    return f"status={obj['status']}" + (f": {reason}" if reason else "")
+                if "error" in obj:
+                    return f"error: {str(obj['error'])[:100]}"
+            except Exception:
+                pass
+        # Strip markdown: headers, fences, bold, inline code
+        import re as _re
+        lines = content.splitlines()
+        clean_lines = []
+        for ln in lines:
+            ln = ln.strip()
+            if not ln or ln.startswith("```") or ln.startswith("---"):
+                continue
+            ln = _re.sub(r"^#{1,6}\s*", "", ln)      # ## headers
+            ln = _re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", ln)  # **bold** / *italic*
+            ln = _re.sub(r"`([^`]+)`", r"\1", ln)     # `inline code`
+            ln = _re.sub(r"^\s*[-*]\s+", "", ln)      # list bullets
+            ln = ln.strip()
+            if ln:
+                clean_lines.append(ln)
+        # Skip common LLM filler openers
+        _FILLER = {"perfect!", "great!", "sure!", "certainly!", "of course!",
+                   "i have", "i've", "here are", "here is", "let me"}
+        meaningful = []
+        for ln in clean_lines:
+            low = ln.lower()
+            if any(low.startswith(f) for f in _FILLER):
+                continue
+            meaningful.append(ln)
+        candidates = meaningful or clean_lines
+        if not candidates:
+            return content.replace("\n", " ")[:120]
+        # Return first meaningful line, capped at 120 chars
+        return candidates[0][:120]
     if name == "classify_issue":
         return content.strip()[:60]
     return content.replace("\n", " ")[:100]
@@ -365,7 +406,8 @@ def main(argv: list[str] | None = None) -> int:
                             def _tick() -> None:
                                 elapsed = _time.monotonic() - t0
                                 msg = f"[{sub_name}] working… ({elapsed:.0f}s)"
-                                app.post_append_log(msg)
+                                # Heartbeat updates Active Task panel in-place only.
+                                # Do NOT append to the activity log — would spam new lines every tick.
                                 app.post_heartbeat(msg)
                                 _schedule_heartbeat(sub_name, t0, interval)
                             _cancel_heartbeat()
@@ -551,8 +593,23 @@ def main(argv: list[str] | None = None) -> int:
         bg = threading.Thread(target=_bg_thread, daemon=True, name="codepilot-pipeline")
         bg.start()
 
-        app.run()
-        stop_bg.set()
+        try:
+            app.run()
+        finally:
+            stop_bg.set()
+            # Restore terminal: disable all mouse tracking modes, show cursor,
+            # exit alt-screen. Guards against Textual crash leaving terminal raw.
+            sys.stdout.write(
+                "\x1b[?1000l"   # disable normal mouse tracking
+                "\x1b[?1002l"   # disable button-event tracking
+                "\x1b[?1003l"   # disable all-movement tracking
+                "\x1b[?1006l"   # disable SGR extended mouse mode
+                "\x1b[?1015l"   # disable urxvt extended mouse mode
+                "\x1b[?25h"     # show cursor
+                "\x1b[?1049l"   # exit alternate screen buffer
+                "\r\n"
+            )
+            sys.stdout.flush()
         return 0
 
     print(f"command '{args.command}' not implemented yet", file=sys.stderr)

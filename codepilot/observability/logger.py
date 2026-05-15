@@ -29,6 +29,7 @@ def configure(
     log_dir: Path | str | None = None,
     log_format: str = "json",
     file_name: str = "codepilot.jsonl",
+    tui_mode: bool = False,
 ) -> None:
     """Idempotent. Safe to call from tests with different settings."""
     global _CONFIGURED
@@ -45,9 +46,10 @@ def configure(
         fh.setFormatter(logging.Formatter("%(message)s"))
         handlers.append(fh)
 
-    sh = logging.StreamHandler()
-    sh.setFormatter(logging.Formatter("%(message)s"))
-    handlers.append(sh)
+    if not tui_mode:
+        sh = logging.StreamHandler()
+        sh.setFormatter(logging.Formatter("%(message)s"))
+        handlers.append(sh)
 
     root = logging.getLogger()
     root.handlers.clear()

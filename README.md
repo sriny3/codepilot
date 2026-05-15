@@ -8,6 +8,33 @@ Built on [DeepAgents](https://github.com/langchain-ai/deepagents) (LangGraph), [
 
 ---
 
+## Demo
+
+### TUI in action
+
+![CodePilot TUI — pipeline processing a bug-fix issue](docs/assets/codepilot-demo.gif)
+
+*Four-panel dashboard: issues feed (top-left), active task + state machine (top-right), live activity log (middle), HITL approval gate (bottom — appears on irreversible operations).*
+
+> **To record your own:** `python -m codepilot run` → point at a test repo with open issues → `ffmpeg -f gdigrab -i desktop output.gif` or use OBS/Gifski.
+
+### Example generated PR
+
+**Issue:** `Fix eslint error in page.tsx (setState in effect hook)`
+
+**PR opened by CodePilot:** [codepilot/issue-5-fix-eslint-setstate-in-effect · financebot#12](https://github.com/sriny3/financebot/pull/12)
+
+```
+Branch:  codepilot/issue-5-fix-eslint-setstate-in-effect
+Commit:  fix: wrap setState calls inside useEffect cleanup function (#5)
+Labels:  codepilot-generated, needs-review
+Trace:   a3f2c1d8-...
+```
+
+PR body contains: issue link, approach summary, test results, and `Trace-Id:` footer for full replay via `python -m codepilot.observability.trace_cli <trace_id>`.
+
+---
+
 ## Table of contents
 
 - [What it does](#what-it-does)
@@ -40,6 +67,10 @@ Every step streams into a live four-panel TUI; every irreversible action is gate
 ---
 
 ## Architecture
+
+![CodePilot architecture — 5-agent pipeline](docs/assets/codepilot-architecture.png)
+
+*Full-resolution infographic: [Figma file](https://www.figma.com/design/c8lHLooVewJLcRDGBKfNLo)*
 
 ```
 ┌──────────────────────────────────────────────────────────┐

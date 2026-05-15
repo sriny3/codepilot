@@ -197,3 +197,52 @@ On Windows, `relative_to()` returns `Path` objects with backslashes. Using `as_p
 - **Symbol extraction for non-Python files**: TypeScript, Go, Rust codebases get no symbol metadata. The extension bonus partially compensates, but a multi-language symbol extractor (tree-sitter) would help.
 - **`rglob("*")` on very large repos is slow**: Potentially tens of thousands of `stat()` calls. For repos > ~50k files, consider a `.gitignore`-aware walk or a pre-built file list from `git ls-files`.
 - **Forward-slash assumption in Coder**: The Coder will receive `wm.relevant_files` as forward-slash paths. If it constructs absolute paths on Windows via simple string join, it needs to use `Path(...)` not string concatenation.
+
+---
+
+## DeepAgents Refactor Addendum (2026-05-08)
+
+Phase 6's core implementation (`map.py`, `scorer.py`, `agent.py`) is **unchanged**. The refactor added a tool layer on top that the DeepAgents orchestrator calls instead of `RepoExplorerAgent.run()`.
+
+### New Files
+
+#### `codepilot/agents/tools/repo_tools.py`
+
+Four `@tool` functions that wrap the existing map and scorer infrastructure:
+
+**`build_repo_map(root: str, max_tokens: int = 4000) → str`** — calls `RepoMap.build(Path(root), max_tokens=max_tokens).to_text()`. Returns error string on exception. Used by the `REPO_EXPLORER` subagent when no cache hit.
+
+**`cache_repo_map(root: str, map_text: str) → str`** — writes `{root}/.codepilot/repo_map.json` containing `{"sha": <git HEAD SHA>, "map": map_text}`. Creates parent dirs with `mkdir(parents=True, exist_ok=True)`. Returns confirmation string.
+
+**`load_cached_repo_map(root: str) → str | None`** — reads `.codepilot/repo_map.json`; returns `None` if file missing, if SHA doesn't match current HEAD, or on any error. SHA computed by `_git_head_sha(root)` (module-level, patchable in tests).
+
+**`retrieve_relevant_files(description: str, repo_map: str, top_n: int = 10) → list[str]`** — parses `repo_map` text back into `RepoMapEntry` objects, calls `score_files(entries, description, top_n)`, returns the ranked path list. Returns `[]` on error.
+
+**`_git_head_sha(root: str) → str`** — module-level function (`subprocess.check_output(["git", "rev-parse", "HEAD"])`). Declared at module scope so tests can monkeypatch it without mocking `subprocess`.
+
+#### New Tests: `tests/agents/test_tool_repo.py` (12 tests)
+
+- All 4 functions are `BaseTool` instances.
+- Cache miss on nonexistent file → `None`.
+- Cache hit with matching SHA → returns map text.
+- SHA mismatch → `None` (stale cache).
+- `build_repo_map` on real temp dir → returns non-empty string.
+- `cache_repo_map` creates nested parent dirs.
+- `retrieve_relevant_files` error path → returns `[]`.
+
+### `REPO_EXPLORER` Subagent Spec (in `subagents.py`)
+
+```python
+REPO_EXPLORER = {
+    "name": "repo_explorer",
+    "description": "Maps a repository and retrieves files relevant to an issue.",
+    "system_prompt": REPO_EXPLORER_PROMPT,
+    "tools": [build_repo_map, retrieve_relevant_files, load_cached_repo_map, cache_repo_map],
+    "permissions": [
+        FilesystemPermission(operations=["read"], paths=["/**"], mode="allow"),
+        FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
+    ],
+}
+```
+
+`RepoExplorerAgent` class is still present and tested but is **not invoked** by the DeepAgents orchestrator. The `REPO_EXPLORER` subagent uses the `@tool` wrappers instead.

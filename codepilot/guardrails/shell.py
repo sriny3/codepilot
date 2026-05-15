@@ -92,7 +92,8 @@ _BUILTIN_RULES: tuple[ShellRule, ...] = (
     ),
     ShellRule(
         "curl_net",
-        "curl ",
+        "curl "
+        ,
         Decision.HITL,
         "network download",
     ),

@@ -9,11 +9,8 @@ from langgraph.store.memory import InMemoryStore
 
 from codepilot.agents.subagents import ALL_SUBAGENTS
 from codepilot.agents.tools.github_tools import (
-    commit_files,
-    create_branch,
     get_issue,
     list_open_issues,
-    open_pr,
 )
 from codepilot.agents.tools.memory_tools import add_lesson, query_lessons
 from codepilot.agents.tools.repo_tools import (
@@ -61,7 +58,7 @@ For each GitHub issue:
 9. Call add_lesson on success with the approach and outcome.
 
 IMPORTANT: Never call ls, read_file, write_file, or execute directly. All filesystem operations go through subagents.
-On merge conflict response from commit_files: do NOT retry — report FAILED immediately.
+If pr_agent task returns merge_conflict: do NOT retry — report FAILED immediately.
 State progression: TRIAGED → EXPLORING → IMPLEMENTING → TESTING → PR_OPENED → DONE | FAILED
 """
 
@@ -81,9 +78,7 @@ def build_orchestrator(cfg: "PipelineConfig") -> Any:  # type: ignore[return]
             add_lesson,
             list_open_issues,
             get_issue,
-            create_branch,
-            commit_files,
-            open_pr,
+
         ],
         subagents=ALL_SUBAGENTS,
         system_prompt=ORCHESTRATOR_PROMPT,

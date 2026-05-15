@@ -17,11 +17,11 @@ async def test_q_quits_app() -> None:
 @pytest.mark.asyncio
 async def test_l_toggles_log_visibility() -> None:
     from codepilot.tui.app import CodePilotApp
-    from textual.widgets import Log
+    from textual.widgets import RichLog
 
     app = CodePilotApp()
     async with app.run_test() as pilot:
-        log = app.query_one(Log)
+        log = app.query_one(RichLog)
         initial_display = log.display
         await pilot.press("l")
         await pilot.pause()

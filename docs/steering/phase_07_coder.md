@@ -180,3 +180,48 @@ Consistency with `SandboxEscapeError` and guardrail blocks — both are `Permiss
 - **No write ordering guarantee**: When multiple edits touch the same file, the last edit wins. The provider is responsible for producing a single coherent edit per file. Add a validation step if non-deterministic providers are used.
 - **Retry semantics**: On retry, `wm.relevant_files` may need to be updated (test failures may point to a different file). The Orchestrator is responsible for updating `wm.relevant_files` before calling `CoderAgent.run` again.
 - **skill_prompt not auto-loaded**: The Orchestrator must look up the skill via `SkillsRegistry` and render it before passing `skill_prompt`. If it forgets, the provider receives `None` and the coder behaves generically.
+
+---
+
+## DeepAgents Refactor Addendum (2026-05-08)
+
+The `CoderAgent` class and `EditProvider` / `FileEdit` types still exist and are tested, but are **not invoked** by the DeepAgents orchestrator. The Coder is now a subagent dict. The LLM drives the edit loop itself using DeepAgents built-in file tools (`read_file`, `edit_file`, `execute`).
+
+### `CODER` Subagent Spec (in `subagents.py`)
+
+```python
+CODER = {
+    "name": "coder",
+    "description": "Implements code changes in the sandbox given relevant files and a skill.",
+    "system_prompt": CODER_PROMPT,
+    "skills": ["/skills/definitions/"],
+    "tools": [run_tests],
+    "permissions": [
+        FilesystemPermission(operations=["write"], paths=["/sandbox/**"], mode="allow"),
+        FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
+        FilesystemPermission(operations=["read"], paths=["/**"], mode="allow"),
+    ],
+}
+```
+
+`CODER_PROMPT` instructs the LLM to: read files → write todos → use `edit_file` for surgical edits → `execute` as smoke check → call `task("test_agent", ...)` → retry on failure (max 3) → surface HITL on 3rd failure.
+
+**`skills: ["/skills/definitions/"]`** — DeepAgents loads all YAML files in that directory and injects the relevant skill into the Coder's context based on the task type. The `SkillsRegistry.select(task_type)` call the old Orchestrator was responsible for is now handled automatically by the framework.
+
+**Sandbox write confinement**: `FilesystemPermission` blocks writes outside `/sandbox/**` at the framework level — no `FileGuard.validate_path()` call needed. The `FileGuard` class still exists and is used when running tests of the old `CoderAgent` directly.
+
+### What's Unchanged
+
+- `codepilot/agents/coder/edits.py` — `FileEdit`, `EditProvider` protocol, `FakeEditProvider` all intact.
+- `codepilot/agents/coder/agent.py` — `CoderAgent` intact with full test coverage.
+- These remain useful as a fallback or for non-LangGraph integration paths.
+
+### What's Different
+
+| Concern | Old (CoderAgent) | New (CODER subagent) |
+|---------|-----------------|----------------------|
+| Edit generation | `EditProvider.generate_edits()` pluggable | LLM calls `edit_file` built-in tool |
+| File guard | `FileGuard.validate_path()` per edit | `FilesystemPermission` framework-level |
+| Skill injection | Orchestrator calls `SkillsRegistry`, passes `skill_prompt` | DeepAgents auto-loads from `skills:` key |
+| Test runner | `TestAgent.run(wm, run_config)` called by Orchestrator | Coder calls `task("test_agent", ...)` directly |
+| Retry logic | Orchestrator Python loop | LLM reasons about retries from CODER_PROMPT |
